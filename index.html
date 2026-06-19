@@ -11020,6 +11020,38 @@ button, .sidebar-btn, .action-btn, .modal-btn, .top-bar-btn {
     padding: 1px 4px !important;
   }
 }
+  /* ========== FIX PRINT OVERLAP ========== */
+@media print {
+  .top-bar,
+  .main-header,
+  .sidebar,
+  .pagination-container,
+  .modal,
+  .toast-container,
+  .customer-table,
+  .customer-form-container,
+  .search-filter-row,
+  #statsSection,
+  #appFooter,
+  .google-sheets-panel,
+  .telegram-status-center,
+  #mobileSidebarToggle {
+    display: none !important;
+  }
+  
+  #printArea {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    background: white !important;
+  }
+  
+  body {
+    background: white !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+}
 </style>
 
    </body>
