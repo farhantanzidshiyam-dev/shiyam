@@ -10823,6 +10823,203 @@ button, .sidebar-btn, .action-btn, .modal-btn, .top-bar-btn {
   align-items: center;
   justify-content: center;
 }
+  /* ========== FIX TOP BAR OVERFLOW ========== */
+
+/* Fix Top Bar */
+.top-bar {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 6px !important;
+  padding: 6px 10px !important;
+  min-height: 44px !important;
+  height: auto !important;
+  overflow: hidden !important;
+}
+
+.top-bar-info {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 0.75rem !important;
+}
+
+.top-bar-info span {
+  white-space: nowrap !important;
+  font-size: 0.7rem !important;
+}
+
+.top-bar-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.top-bar-actions .top-bar-btn,
+.top-bar-actions .add-customer-top-btn {
+  padding: 4px 8px !important;
+  font-size: 0.7rem !important;
+  min-height: 32px !important;
+  white-space: nowrap !important;
+}
+
+/* Fix Telegram Status */
+.telegram-status-center {
+  position: static !important;
+  transform: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+}
+
+.telegram-header-status {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 3px 10px !important;
+  font-size: 0.7rem !important;
+  min-height: 30px !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.telegram-header-status .icon {
+  font-size: 0.9rem !important;
+}
+
+.telegram-header-status .time {
+  font-size: 0.65rem !important;
+  min-width: 30px !important;
+}
+
+.telegram-header-status button {
+  width: 24px !important;
+  height: 24px !important;
+  font-size: 0.7rem !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  padding: 0 !important;
+}
+
+/* Mobile Fix for Top Bar */
+@media screen and (max-width: 768px) {
+  .top-bar {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    padding: 4px 8px !important;
+    gap: 4px !important;
+  }
+  
+  .top-bar-info {
+    font-size: 0.6rem !important;
+    gap: 4px !important;
+    flex: 1 1 100% !important;
+    justify-content: center !important;
+  }
+  
+  .top-bar-info span {
+    font-size: 0.6rem !important;
+  }
+  
+  .telegram-status-center {
+    flex: 0 1 auto !important;
+    order: 0 !important;
+  }
+  
+  .telegram-header-status {
+    padding: 2px 8px !important;
+    font-size: 0.6rem !important;
+    min-height: 26px !important;
+  }
+  
+  .telegram-header-status .time {
+    font-size: 0.55rem !important;
+    min-width: 24px !important;
+  }
+  
+  .top-bar-actions {
+    flex: 0 1 auto !important;
+    gap: 3px !important;
+  }
+  
+  .top-bar-actions .top-bar-btn,
+  .top-bar-actions .add-customer-top-btn {
+    padding: 3px 6px !important;
+    font-size: 0.6rem !important;
+    min-height: 28px !important;
+  }
+  
+  .add-customer-top-btn span {
+    display: none !important;
+  }
+  
+  .add-customer-top-btn i {
+    font-size: 0.9rem !important;
+  }
+  
+  #topBarSyncTime {
+    font-size: 0.55rem !important;
+    padding: 2px 6px !important;
+  }
+}
+
+/* Very Small Phones */
+@media screen and (max-width: 400px) {
+  .top-bar {
+    padding: 3px 5px !important;
+    gap: 2px !important;
+  }
+  
+  .top-bar-info {
+    font-size: 0.5rem !important;
+    gap: 2px !important;
+  }
+  
+  .top-bar-info span {
+    font-size: 0.5rem !important;
+  }
+  
+  .telegram-header-status {
+    padding: 1px 6px !important;
+    font-size: 0.5rem !important;
+    min-height: 22px !important;
+    border-radius: 12px !important;
+  }
+  
+  .telegram-header-status .icon {
+    font-size: 0.7rem !important;
+  }
+  
+  .telegram-header-status .time {
+    font-size: 0.45rem !important;
+    min-width: 20px !important;
+  }
+  
+  .telegram-header-status button {
+    width: 18px !important;
+    height: 18px !important;
+    font-size: 0.5rem !important;
+    min-width: 18px !important;
+    min-height: 18px !important;
+  }
+  
+  .top-bar-actions .top-bar-btn,
+  .top-bar-actions .add-customer-top-btn {
+    padding: 2px 4px !important;
+    font-size: 0.5rem !important;
+    min-height: 24px !important;
+  }
+  
+  #topBarSyncTime {
+    font-size: 0.45rem !important;
+    padding: 1px 4px !important;
+  }
+}
 </style>
 
    </body>
