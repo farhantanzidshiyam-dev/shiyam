@@ -13379,173 +13379,27 @@ console.log('📤 Then syncs any changes BACK to Google Sheets');
     
 })();
 </script>
-  <!-- ========== CUSTOMER MANAGEMENT FIXES ========== -->
+  <!-- ========== CUSTOMER MANAGEMENT - COMPLETE FIX ========== -->
 <script>
 // ================================================================
-// 1. DELETE PASSWORD - INLINE (NO EXTRA MODAL)
-// 2. ADD CUSTOMER ANIMATION
-// 3. MODAL CLOSE FIX
+// FIX: Add Customer Cancel Button + Delete Password Inline
 // ================================================================
 
 (function() {
     'use strict';
     
-    console.log('🔄 Applying Customer Management Fixes...');
+    console.log('🔄 Applying Emergency Fixes...');
     
     // ================================================================
-    // 1. FIX DELETE MODAL - USE EXISTING MODAL (NO EXTRA POPUP)
+    // 1. FIX ADD CUSTOMER CANCEL BUTTONS (REMOVE DUPLICATES)
     // ================================================================
     
-    // Ensure delete modal uses the existing modal structure
-    // The delete modal is already in the HTML - we just need to make it work properly
-    
-    // Fix: Show delete modal with customer name
-    window.showDeleteModal = function(id) {
-        const customer = customers.find(c => c.id === id);
-        if (!customer) {
-            showToast("Customer not found for deletion.", "error");
-            return;
-        }
-
-        document.getElementById("deleteCustomerName").textContent = capitalizeWords(customer.name);
-        document.getElementById("confirmDeleteBtn").dataset.customerId = id;
-        document.getElementById("deletePasswordInput").value = "";
-        document.getElementById("deletePasswordWarning").classList.remove("show");
-
-        document.getElementById("deleteModal").style.display = "flex";
-        setTimeout(() => document.getElementById("deletePasswordInput").focus(), 100);
-    };
-    
-    // Fix: Confirm delete button
-    document.getElementById("confirmDeleteBtn").addEventListener("click", function() {
-        const customerId = this.dataset.customerId;
-        const password = document.getElementById("deletePasswordInput").value;
-        const customerName = document.getElementById("deleteCustomerName").textContent;
-        
-        if (deleteCustomer(customerId, password)) {
-            // Close delete modal
-            document.getElementById("deleteModal").style.display = "none";
-            document.getElementById("deletePasswordInput").value = "";
-            document.getElementById("deletePasswordWarning").classList.remove("show");
-            
-            // Close preview modal if open
-            const previewModal = document.getElementById("previewModal");
-            if (previewModal) {
-                previewModal.style.display = "none";
-            }
-            
-            showToast(`✅ ${customerName} deleted successfully!`, "success");
-            renderTable();
-        } else {
-            document.getElementById("deletePasswordWarning").classList.add("show");
-            document.getElementById("deletePasswordInput").value = "";
-            document.getElementById("deletePasswordInput").focus();
-            showToast("❌ Incorrect password!", "error");
-        }
-    });
-    
-    // Fix: Enter key on password field
-    document.getElementById("deletePasswordInput").addEventListener("keydown", function(e) {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            document.getElementById("confirmDeleteBtn").click();
-        }
-    });
-    
-    // Fix: Cancel button
-    document.getElementById("cancelDeleteBtn").addEventListener("click", function() {
-        document.getElementById("deleteModal").style.display = "none";
-        document.getElementById("deletePasswordInput").value = "";
-        document.getElementById("deletePasswordWarning").classList.remove("show");
-    });
-    
-    // Fix: X close button
-    document.getElementById("closeDeleteModal").addEventListener("click", function() {
-        document.getElementById("deleteModal").style.display = "none";
-        document.getElementById("deletePasswordInput").value = "";
-        document.getElementById("deletePasswordWarning").classList.remove("show");
-    });
-    
-    // Fix: Outside click
-    document.getElementById("deleteModal").addEventListener("click", function(e) {
-        if (e.target === this) {
-            this.style.display = "none";
-            document.getElementById("deletePasswordInput").value = "";
-            document.getElementById("deletePasswordWarning").classList.remove("show");
-        }
-    });
-    
-    // ================================================================
-    // 2. ADD CUSTOMER ANIMATION & IMMEDIATE LIST UPDATE
-    // ================================================================
-    
-    // Fix: Override addNewCustomer with animation
-    const originalAddNewCustomer = window.addNewCustomer;
-    
-    window.addNewCustomer = function(name, phone, address, due, paid, source, note) {
-        if (!name) return false;
-        
-        const newCustomer = {
-            id: generateId(),
-            dateAdded: new Date().toLocaleDateString('en-GB'),
-            name: capitalizeWords(name),
-            phone: phone.trim(),
-            address: address.trim(),
-            due: Math.round(Number(due)) || 0,
-            paid: Math.round(Number(paid)) || 0,
-            source: source.trim(),
-            note: note.trim(),
-            transactionHistory: []
-        };
-        
-        // Add to customers array
-        customers.push(newCustomer);
-        saveCustomers(customers);
-        
-        // ========== ANIMATION: Flash the new row ==========
-        // Render table immediately
-        renderTable();
-        
-        // Find the new row and highlight it
-        setTimeout(function() {
-            const rows = document.querySelectorAll('#customerTableBody tr');
-            rows.forEach(row => {
-                const nameCell = row.querySelector('.name-col');
-                if (nameCell && nameCell.textContent.trim() === capitalizeWords(name)) {
-                    // Add highlight animation
-                    row.style.transition = 'background 0.3s ease';
-                    row.style.background = 'rgba(40, 167, 69, 0.3)';
-                    row.style.borderLeft = '4px solid #28a745';
-                    
-                    // Flash effect
-                    setTimeout(() => {
-                        row.style.background = 'rgba(40, 167, 69, 0.1)';
-                    }, 300);
-                    setTimeout(() => {
-                        row.style.background = '';
-                        row.style.borderLeft = '';
-                    }, 800);
-                    
-                    // Scroll to the row
-                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    
-                    // Show success toast
-                    showToast(`✅ ${newCustomer.name} added at SL ${customers.length}`, 'success');
-                }
-            });
-        }, 100);
-        
-        return true;
-    };
-    
-    // ================================================================
-    // 3. FIX ADD CUSTOMER FORM - CANCEL/CLOSE BUTTONS
-    // ================================================================
-    
-    // Fix: Cancel buttons
     function closeAddCustomerForm() {
+        console.log('❌ Closing Add Customer Form');
+        
         const formContainer = document.getElementById("customerFormContainer");
         const addBtn = document.getElementById("addCustomerBtn");
+        const form = document.getElementById("addCustomerForm");
         
         if (formContainer) {
             formContainer.classList.remove("show");
@@ -13554,14 +13408,10 @@ console.log('📤 Then syncs any changes BACK to Google Sheets');
         if (addBtn) {
             addBtn.classList.remove("active");
         }
-        
-        // Reset form
-        const form = document.getElementById("addCustomerForm");
         if (form) {
             form.reset();
         }
         
-        // Hide custom fields
         const addressCustomGroup = document.getElementById("addressCustomGroup");
         if (addressCustomGroup) {
             addressCustomGroup.style.display = "none";
@@ -13574,109 +13424,289 @@ console.log('📤 Then syncs any changes BACK to Google Sheets');
         saveFormState(false);
     }
     
-    // Cancel button 1
-    document.getElementById("cancelAddCustomerBtn").addEventListener("click", closeAddCustomerForm);
+    // Remove all existing event listeners by cloning the buttons
+    const cancelBtn1 = document.getElementById("cancelAddCustomerBtn");
+    const cancelBtn2 = document.getElementById("cancelAddCustomerBtn2");
     
-    // Cancel button 2
-    document.getElementById("cancelAddCustomerBtn2").addEventListener("click", closeAddCustomerForm);
+    if (cancelBtn1) {
+        const newBtn1 = cancelBtn1.cloneNode(true);
+        cancelBtn1.parentNode.replaceChild(newBtn1, cancelBtn1);
+        newBtn1.addEventListener("click", closeAddCustomerForm);
+        console.log('✅ Cancel button 1 fixed');
+    }
     
-    // Fix: Add Customer button toggle
-    document.getElementById("addCustomerBtn").addEventListener("click", function() {
-        const formContainer = document.getElementById("customerFormContainer");
-        if (formContainer.classList.contains("show")) {
-            closeAddCustomerForm();
-        } else {
-            formContainer.classList.add("show");
-            formContainer.style.display = "block";
-            this.classList.add("active");
-            saveFormState(true);
-            setTimeout(() => {
-                document.getElementById("nameInput").focus();
-            }, 100);
+    if (cancelBtn2) {
+        const newBtn2 = cancelBtn2.cloneNode(true);
+        cancelBtn2.parentNode.replaceChild(newBtn2, cancelBtn2);
+        newBtn2.addEventListener("click", closeAddCustomerForm);
+        console.log('✅ Cancel button 2 fixed');
+    }
+    
+    // Fix Add Customer button toggle
+    const addBtn = document.getElementById("addCustomerBtn");
+    if (addBtn) {
+        const newAddBtn = addBtn.cloneNode(true);
+        addBtn.parentNode.replaceChild(newAddBtn, addBtn);
+        newAddBtn.addEventListener("click", function() {
+            const formContainer = document.getElementById("customerFormContainer");
+            if (formContainer.classList.contains("show")) {
+                closeAddCustomerForm();
+            } else {
+                formContainer.classList.add("show");
+                formContainer.style.display = "block";
+                this.classList.add("active");
+                saveFormState(true);
+                setTimeout(() => {
+                    document.getElementById("nameInput").focus();
+                }, 100);
+            }
+        });
+        console.log('✅ Add button fixed');
+    }
+    
+    // ================================================================
+    // 2. FIX DELETE PASSWORD - INLINE (USE EXISTING MODAL)
+    // ================================================================
+    
+    // Fix showDeleteModal function
+    window.showDeleteModal = function(id) {
+        const customer = customers.find(c => c.id === id);
+        if (!customer) {
+            showToast("Customer not found.", "error");
+            return;
         }
-    });
+
+        document.getElementById("deleteCustomerName").textContent = capitalizeWords(customer.name);
+        document.getElementById("confirmDeleteBtn").dataset.customerId = id;
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+
+        document.getElementById("deleteModal").style.display = "flex";
+        setTimeout(() => document.getElementById("deletePasswordInput").focus(), 100);
+    };
     
-    // ================================================================
-    // 4. FIX EDIT MODAL - CLOSE BUTTONS
-    // ================================================================
-    
-    function closeEditModal() {
-        document.getElementById("editModal").style.display = "none";
-        document.getElementById("editIdInput").value = "";
-        document.getElementById("editNameInput").value = "";
-        document.getElementById("editPhoneInput").value = "";
-        document.getElementById("editDueInput").value = "";
-        document.getElementById("editPaidInput").value = "";
-        document.getElementById("editNoteInput").value = "";
-        document.getElementById("editAddressCustomGroup").style.display = "none";
-        document.getElementById("editSourceCustomGroup").style.display = "none";
+    // Fix confirm delete
+    const confirmBtn = document.getElementById("confirmDeleteBtn");
+    if (confirmBtn) {
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        newConfirmBtn.addEventListener("click", function() {
+            const customerId = this.dataset.customerId;
+            const password = document.getElementById("deletePasswordInput").value;
+            const customerName = document.getElementById("deleteCustomerName").textContent;
+            
+            if (deleteCustomer(customerId, password)) {
+                document.getElementById("deleteModal").style.display = "none";
+                document.getElementById("deletePasswordInput").value = "";
+                document.getElementById("deletePasswordWarning").classList.remove("show");
+                
+                const previewModal = document.getElementById("previewModal");
+                if (previewModal) {
+                    previewModal.style.display = "none";
+                }
+                
+                showToast(`✅ ${customerName} deleted!`, "success");
+                renderTable();
+            } else {
+                document.getElementById("deletePasswordWarning").classList.add("show");
+                document.getElementById("deletePasswordInput").value = "";
+                document.getElementById("deletePasswordInput").focus();
+                showToast("❌ Incorrect password!", "error");
+            }
+        });
+        console.log('✅ Delete confirm button fixed');
     }
     
-    document.getElementById("cancelEditBtn").addEventListener("click", closeEditModal);
-    document.getElementById("closeEditModal").addEventListener("click", closeEditModal);
-    
-    // ================================================================
-    // 5. FIX PAYMENT MODAL - CLOSE BUTTONS
-    // ================================================================
-    
-    function closePaymentModal() {
-        document.getElementById("paymentModal").style.display = "none";
-        document.getElementById("paymentAmountInput").value = "";
-        document.getElementById("paymentNoteInput").value = "";
-        document.getElementById("paymentType").value = "received";
-        document.querySelectorAll('.payment-type-btn').forEach(b => b.classList.remove('active'));
-        document.querySelector('.payment-type-btn.received').classList.add('active');
-        document.getElementById('adjustmentOptions').classList.remove('show');
+    // Fix delete cancel
+    const cancelDeleteBtn = document.getElementById("cancelDeleteBtn");
+    if (cancelDeleteBtn) {
+        const newCancelDelete = cancelDeleteBtn.cloneNode(true);
+        cancelDeleteBtn.parentNode.replaceChild(newCancelDelete, cancelDeleteBtn);
+        newCancelDelete.addEventListener("click", function() {
+            document.getElementById("deleteModal").style.display = "none";
+            document.getElementById("deletePasswordInput").value = "";
+            document.getElementById("deletePasswordWarning").classList.remove("show");
+        });
+        console.log('✅ Delete cancel button fixed');
     }
     
-    document.getElementById("cancelPaymentBtn").addEventListener("click", closePaymentModal);
-    document.getElementById("closePaymentModal").addEventListener("click", closePaymentModal);
+    // Fix delete X close
+    const closeDeleteBtn = document.getElementById("closeDeleteModal");
+    if (closeDeleteBtn) {
+        const newCloseDelete = closeDeleteBtn.cloneNode(true);
+        closeDeleteBtn.parentNode.replaceChild(newCloseDelete, closeDeleteBtn);
+        newCloseDelete.addEventListener("click", function() {
+            document.getElementById("deleteModal").style.display = "none";
+            document.getElementById("deletePasswordInput").value = "";
+            document.getElementById("deletePasswordWarning").classList.remove("show");
+        });
+        console.log('✅ Delete X button fixed');
+    }
+    
+    // Fix delete Enter key
+    const deletePassInput = document.getElementById("deletePasswordInput");
+    if (deletePassInput) {
+        const newPassInput = deletePassInput.cloneNode(true);
+        deletePassInput.parentNode.replaceChild(newPassInput, deletePassInput);
+        newPassInput.addEventListener("keydown", function(e) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                document.getElementById("confirmDeleteBtn").click();
+            }
+        });
+        console.log('✅ Delete password enter key fixed');
+    }
     
     // ================================================================
-    // 6. FIX PREVIEW MODAL - CLOSE
+    // 3. ADD CUSTOMER - SAVE BUTTON ANIMATION
     // ================================================================
     
-    document.getElementById("closePreviewModal").addEventListener("click", function() {
-        document.getElementById("previewModal").style.display = "none";
-    });
+    // Fix add customer form submit
+    const addForm = document.getElementById("addCustomerForm");
+    if (addForm) {
+        const newAddForm = addForm.cloneNode(true);
+        addForm.parentNode.replaceChild(newAddForm, addForm);
+        
+        newAddForm.addEventListener("submit", function(e) {
+            e.preventDefault();
+            
+            const saveBtn = this.querySelector('.customer-form-btn.save');
+            
+            // Animate save button
+            if (saveBtn) {
+                saveBtn.style.transition = 'all 0.3s ease';
+                saveBtn.style.background = '#28a745';
+                saveBtn.style.transform = 'scale(1.05)';
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+                saveBtn.disabled = true;
+            }
+            
+            const name = document.getElementById("nameInput").value;
+            const phone = document.getElementById("phoneInput").value;
+            let address = document.getElementById("addressSelect").value;
+            const customAddress = document.getElementById("addressCustomInput").value;
+            const due = document.getElementById("dueInput").value;
+            const paid = document.getElementById("paidInput").value;
+            let source = document.getElementById("sourceSelect").value;
+            const customSource = document.getElementById("sourceCustomInput").value;
+            const note = document.getElementById("noteInput").value;
+            
+            if (address === 'Other' && customAddress) {
+                address = customAddress;
+            }
+            if (source === 'Other' && customSource) {
+                source = customSource;
+            }
+            
+            const result = addNewCustomer(name, phone, address, due, paid, source, note);
+            
+            if (result) {
+                // Success animation
+                if (saveBtn) {
+                    saveBtn.style.background = '#28a745';
+                    saveBtn.innerHTML = '<i class="fas fa-check"></i> Added!';
+                    saveBtn.style.transform = 'scale(1.1)';
+                    
+                    setTimeout(() => {
+                        saveBtn.style.transform = 'scale(1)';
+                    }, 500);
+                }
+                
+                // Reset form after delay
+                setTimeout(() => {
+                    this.reset();
+                    document.getElementById("addressCustomGroup").style.display = 'none';
+                    document.getElementById("sourceCustomGroup").style.display = 'none';
+                    if (saveBtn) {
+                        saveBtn.style.background = '';
+                        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Customer';
+                        saveBtn.disabled = false;
+                    }
+                    document.getElementById("nameInput").focus();
+                    
+                    // Close form after successful add
+                    setTimeout(closeAddCustomerForm, 500);
+                }, 800);
+                
+                // Find and highlight new row
+                setTimeout(function() {
+                    const rows = document.querySelectorAll('#customerTableBody tr');
+                    rows.forEach(row => {
+                        const nameCell = row.querySelector('.name-col');
+                        if (nameCell && nameCell.textContent.trim() === capitalizeWords(name)) {
+                            row.style.transition = 'all 0.3s ease';
+                            row.style.background = 'rgba(40, 167, 69, 0.3)';
+                            row.style.borderLeft = '4px solid #28a745';
+                            setTimeout(() => {
+                                row.style.background = 'rgba(40, 167, 69, 0.1)';
+                            }, 300);
+                            setTimeout(() => {
+                                row.style.background = '';
+                                row.style.borderLeft = '';
+                            }, 800);
+                            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    });
+                }, 200);
+                
+                showToast(`✅ ${name} added!`, 'success');
+            } else {
+                // Error - reset button
+                if (saveBtn) {
+                    saveBtn.style.background = '#dc3545';
+                    saveBtn.innerHTML = '<i class="fas fa-times"></i> Error';
+                    setTimeout(() => {
+                        saveBtn.style.background = '';
+                        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Customer';
+                        saveBtn.disabled = false;
+                    }, 1500);
+                }
+                showToast("Please enter a valid customer name.", "error");
+                document.getElementById("nameInput").focus();
+            }
+        });
+        console.log('✅ Add form submit fixed with animation');
+    }
     
     // ================================================================
-    // 7. ADD CSS ANIMATION
+    // 4. ADD CSS ANIMATIONS
     // ================================================================
     
-    if (!document.getElementById('customerAnimStyle')) {
+    if (!document.getElementById('customerFixStyle')) {
         const style = document.createElement('style');
-        style.id = 'customerAnimStyle';
+        style.id = 'customerFixStyle';
         style.textContent = `
-            /* Add customer highlight animation */
             @keyframes highlightRow {
                 0% { background: rgba(40, 167, 69, 0.4); border-left: 4px solid #28a745; }
                 50% { background: rgba(40, 167, 69, 0.15); border-left: 4px solid #28a745; }
                 100% { background: transparent; border-left: none; }
             }
             
-            .customer-row-highlight {
-                animation: highlightRow 1.2s ease forwards;
+            .customer-form-btn.save {
+                transition: all 0.3s ease !important;
             }
             
-            /* Modal close fix */
-            .modal-content .close-btn {
-                cursor: pointer;
-                font-size: 1.8rem;
-                font-weight: bold;
-                transition: color 0.2s;
+            .customer-form-btn.save:active {
+                transform: scale(0.95) !important;
             }
-            .modal-content .close-btn:hover {
-                color: var(--action-delete);
+            
+            .modal .close-btn {
+                cursor: pointer !important;
+                font-size: 1.8rem !important;
+                transition: color 0.2s !important;
+            }
+            
+            .modal .close-btn:hover {
+                color: var(--action-delete) !important;
             }
         `;
         document.head.appendChild(style);
     }
     
-    console.log('✅ All fixes applied!');
-    console.log('📌 Delete: Uses existing modal (no extra popup)');
-    console.log('📌 Add: Animation + immediate list update');
-    console.log('📌 Modals: Cancel/Close buttons fixed');
+    console.log('✅ All fixes applied successfully!');
+    console.log('📌 Cancel buttons: Fixed');
+    console.log('📌 Delete: Uses existing modal');
+    console.log('📌 Add: Animated save button + highlight');
     
 })();
 </script>
