@@ -11053,7 +11053,2050 @@ button, .sidebar-btn, .action-btn, .modal-btn, .top-bar-btn {
   }
 }
 </style>
+<!-- ========== ANDROID AUTO-LOAD (NEW) ========== -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        if (/android/i.test(navigator.userAgent)) {
+            const lastLoad = localStorage.getItem('roza_auto_load');
+            const today = new Date().toDateString();
+            if (lastLoad !== today || customers.length === 0) {
+                showToast('📱 Loading from Google Sheets...', 'info', 3000);
+                fetch('https://script.google.com/macros/s/AKfycbw3VQFQjdR1Fd-8KDAwp9DLTMQmqYviCY9_yzdsCaUx259fERBWeW9Rc1xE52lQaNfb/exec?action=getData&spreadsheetId=1eKFspNMGXT-C4GP3AHUCObflKtwxiy11FgBBEtTMvqk&_=' + Date.now())
+                    .then(r => r.json())
+                    .then(result => {
+                        if (result.status === 'success' && result.data) {
+                            const headers = result.data[0];
+                            const rows = result.data.slice(1);
+                            const nameIdx = headers.findIndex(h => h && h.toLowerCase().trim() === 'name');
+                            if (nameIdx !== -1) {
+                                const imported = [];
+                                rows.forEach(row => {
+                                    if (row[nameIdx] && row[nameIdx].trim()) {
+                                        imported.push({
+                                            id: row[headers.findIndex(h => h && h.toLowerCase().trim() === 'id')] || 'CUST-' + Date.now(),
+                                            dateAdded: row[headers.findIndex(h => h && h.toLowerCase().trim() === 'date')] || new Date().toLocaleDateString('en-GB'),
+                                            name: row[nameIdx].trim(),
+                                            phone: row[headers.findIndex(h => h && h.toLowerCase().trim() === 'phone')] || '',
+                                            address: row[headers.findIndex(h => h && h.toLowerCase().trim() === 'address')] || '',
+                                            due: Math.round(Number(row[headers.findIndex(h => h && h.toLowerCase().trim() === 'due')]) || 0),
+                                            paid: Math.round(Number(row[headers.findIndex(h => h && h.toLowerCase().trim() === 'paid')]) || 0),
+                                            source: row[headers.findIndex(h => h && h.toLowerCase().trim() === 'source')] || '',
+                                            note: row[headers.findIndex(h => h && h.toLowerCase().trim() === 'notes')] || '',
+                                            transactionHistory: []
+                                        });
+                                    }
+                                });
+                                if (imported.length > 0) {
+                                    customers = imported;
+                                    saveCustomers(customers);
+                                    renderTable();
+                                    localStorage.setItem('roza_auto_load', today);
+                                    showToast('✅ Loaded ' + imported.length + ' customers from Google Sheets', 'success', 4000);
+                                }
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Auto-load error:', err);
+                        if (customers.length === 0) {
+                            showToast('⚠️ No data found. Add customers manually.', 'warning', 5000);
+                        }
+                    });
+            }
+        }
+    }, 3000);
+});
+</script>
+<!-- ========== SMART SYNC SYSTEM: LOAD FIRST, SYNC AFTER ========== -->
+<script>
+// ================================================================
+// CONFIGURATION
+// ================================================================
 
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw3VQFQjdR1Fd-8KDAwp9DLTMQmqYviCY9_yzdsCaUx259fERBWeW9Rc1xE52lQaNfb/exec';
+const SPREADSHEET_ID = '1eKFspNMGXT-C4GP3AHUCObflKtwxiy11FgBBEtTMvqk';
+const SYNC_KEY = 'roza_last_sheet_sync';
+const LOAD_KEY = 'roza_last_data_load';
+
+// ================================================================
+// LOAD DATA FROM GOOGLE SHEETS (FIRST)
+// ================================================================
+
+async function loadFromGoogleSheets() {
+    try {
+        showToast('📥 Loading data from Google Sheets...', 'info', 3000);
+        console.log('🔄 Loading from Google Sheets...');
+        
+        const url = `${APPS_SCRIPT_URL}?action=getData&spreadsheetId=${SPREADSHEET_ID}&_=${Date.now()}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        
+        if (result.status === 'success' && result.data && result.data.length > 1) {
+            const imported = parseSheetData(result.data);
+            
+            if (imported.length > 0) {
+                customers = imported;
+                saveCustomers(customers);
+                renderTable();
+                
+                const now = new Date().toISOString();
+                localStorage.setItem(LOAD_KEY, now);
+                localStorage.setItem(SYNC_KEY, now);
+                
+                showToast(`✅ Loaded ${customers.length} customers from Google Sheets`, 'success', 4000);
+                console.log(`✅ Loaded ${customers.length} customers`);
+                return true;
+            }
+        }
+        
+        console.log('ℹ️ No data found in Google Sheets');
+        return false;
+        
+    } catch (error) {
+        console.error('❌ Load error:', error);
+        if (customers.length === 0) {
+            showToast('⚠️ No data found. Add customers manually.', 'warning', 4000);
+        }
+        return false;
+    }
+}
+
+// ================================================================
+// PARSE SHEET DATA
+// ================================================================
+
+function parseSheetData(sheetData) {
+    if (!sheetData || !Array.isArray(sheetData) || sheetData.length < 2) {
+        return [];
+    }
+
+    const headers = sheetData[0];
+    const rows = sheetData.slice(1);
+
+    const getIndex = (name) => {
+        return headers.findIndex(h => 
+            h && h.toString().toLowerCase().trim() === name.toLowerCase().trim()
+        );
+    };
+
+    const nameIdx = getIndex('Name');
+    if (nameIdx === -1) return [];
+
+    const idIdx = getIndex('ID');
+    const dateIdx = getIndex('Date');
+    const phoneIdx = getIndex('Phone');
+    const addressIdx = getIndex('Address');
+    const dueIdx = getIndex('Due');
+    const paidIdx = getIndex('Paid');
+    const sourceIdx = getIndex('Source');
+    const notesIdx = getIndex('Notes');
+
+    const customers = [];
+
+    rows.forEach((row, index) => {
+        if (!row || row.length === 0) return;
+        const name = getCellValue(row, nameIdx);
+        if (!name || name.trim() === '') return;
+
+        customers.push({
+            id: getCellValue(row, idIdx) || `CUST-${Date.now()}-${index}`,
+            dateAdded: getCellValue(row, dateIdx) || new Date().toLocaleDateString('en-GB'),
+            name: capitalizeWords(name.trim()),
+            phone: getCellValue(row, phoneIdx) || '',
+            address: capitalizeWords(getCellValue(row, addressIdx) || ''),
+            due: Math.round(Number(getCellValue(row, dueIdx)) || 0),
+            paid: Math.round(Number(getCellValue(row, paidIdx)) || 0),
+            source: getCellValue(row, sourceIdx) || '',
+            note: getCellValue(row, notesIdx) || '',
+            transactionHistory: []
+        });
+    });
+
+    return customers;
+}
+
+function getCellValue(row, index) {
+    if (index === -1 || !row || index >= row.length) return '';
+    const value = row[index];
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
+}
+
+// ================================================================
+// SYNC DATA TO GOOGLE SHEETS (AFTER LOAD)
+// ================================================================
+
+async function syncToGoogleSheets() {
+    if (customers.length === 0) {
+        console.log('ℹ️ No customers to sync');
+        return false;
+    }
+
+    try {
+        showToast('📤 Syncing to Google Sheets...', 'info', 3000);
+        console.log('🔄 Syncing to Google Sheets...');
+        
+        // Prepare data
+        const sheetData = customers.map((customer, index) => {
+            const currentDue = Math.max(0, (customer.due || 0) - (customer.paid || 0));
+            let status = "Paid";
+            if (customer.due === 0 && customer.paid === 0) status = "Hidden Due";
+            else if (currentDue > 0 && customer.paid === 0) status = "Due";
+            else if (currentDue > 0 && customer.paid > 0) status = "Partial Paid";
+
+            return {
+                ID: customer.id || `CUST-${index + 1}`,
+                Date: customer.dateAdded || new Date().toLocaleDateString('en-GB'),
+                Name: capitalizeWords(customer.name) || 'Unnamed',
+                Phone: customer.phone || 'N/A',
+                Address: capitalizeWords(customer.address) || 'N/A',
+                Due: customer.due || 0,
+                Paid: customer.paid || 0,
+                'Current Due': currentDue,
+                Status: status,
+                Source: customer.source || 'N/A',
+                Notes: (customer.note || '').substring(0, 200),
+                'Last Sync': new Date().toLocaleString('en-GB')
+            };
+        });
+
+        // Send to Google Sheets
+        await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'updateSheet',
+                spreadsheetId: SPREADSHEET_ID,
+                sheetName: 'Sheet1',
+                data: sheetData
+            })
+        });
+
+        const now = new Date().toISOString();
+        localStorage.setItem(SYNC_KEY, now);
+        
+        // Update top bar time
+        const topBarSpan = document.getElementById('topBarSyncText');
+        if (topBarSpan) {
+            topBarSpan.textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        }
+        
+        showToast(`✅ Synced ${customers.length} customers to Google Sheets`, 'success', 4000);
+        console.log(`✅ Synced ${customers.length} customers`);
+        return true;
+        
+    } catch (error) {
+        console.error('❌ Sync error:', error);
+        showToast('❌ Sync failed: ' + error.message, 'error', 4000);
+        return false;
+    }
+}
+
+// ================================================================
+// MAIN: LOAD FIRST, THEN SYNC
+// ================================================================
+
+async function loadThenSync() {
+    console.log('🚀 Starting: Load then Sync...');
+    
+    // STEP 1: LOAD from Google Sheets
+    const loadSuccess = await loadFromGoogleSheets();
+    
+    // STEP 2: SYNC local data to Google Sheets (if there's data)
+    // This ensures any local changes are pushed up
+    if (customers.length > 0) {
+        // Wait a moment before syncing
+        setTimeout(async () => {
+            await syncToGoogleSheets();
+        }, 2000);
+    }
+    
+    console.log('✅ Load then Sync completed!');
+}
+
+// ================================================================
+// WATCH FOR DATA CHANGES & AUTO-SYNC
+// ================================================================
+
+// Save the original saveCustomers function
+const originalSaveCustomers = saveCustomers;
+
+// Override saveCustomers to auto-sync after changes
+saveCustomers = function(arr) {
+    const result = originalSaveCustomers(arr);
+    
+    // Auto-sync after a delay (debounce)
+    clearTimeout(window.autoSyncTimeout);
+    window.autoSyncTimeout = setTimeout(() => {
+        if (customers.length > 0) {
+            syncToGoogleSheets();
+        }
+    }, 5000); // 5 second delay
+    
+    return result;
+};
+
+// Also sync after these operations
+const originalAddNewCustomer = addNewCustomer;
+addNewCustomer = function(...args) {
+    const result = originalAddNewCustomer(...args);
+    setTimeout(() => { if (customers.length > 0) syncToGoogleSheets(); }, 3000);
+    return result;
+};
+
+const originalUpdateCustomer = updateCustomer;
+updateCustomer = function(...args) {
+    const result = originalUpdateCustomer(...args);
+    setTimeout(() => { if (customers.length > 0) syncToGoogleSheets(); }, 3000);
+    return result;
+};
+
+const originalRecordPayment = recordPayment;
+recordPayment = function(...args) {
+    const result = originalRecordPayment(...args);
+    setTimeout(() => { if (customers.length > 0) syncToGoogleSheets(); }, 3000);
+    return result;
+};
+
+// ================================================================
+// INITIALIZE ON PAGE LOAD
+// ================================================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait 2 seconds for everything to load, then load from sheet
+    setTimeout(function() {
+        loadThenSync();
+    }, 2000);
+});
+
+console.log('✅ Smart Sync System Ready!');
+console.log('📥 Loads from Google Sheets FIRST');
+console.log('📤 Then syncs any changes BACK to Google Sheets');
+<!-- ========== SL POSITION SELECTOR - COMPLETE SYSTEM ========== -->
+<script>
+// ================================================================
+// SL POSITION SELECTOR - COMPLETE ONE-BOX SOLUTION
+// ================================================================
+
+(function() {
+    'use strict';
+    
+    console.log('🔄 SL System Starting...');
+    
+    // ================================================================
+    // 1. ADD SL SELECTOR TO FORM (FORCE METHOD)
+    // ================================================================
+    
+    function addSLSelectorToForm() {
+        const formGrid = document.querySelector('.customer-form-grid');
+        if (!formGrid) {
+            console.log('❌ Form grid not found');
+            return false;
+        }
+        
+        // Check if already exists
+        if (document.getElementById('slPositionSelect')) {
+            console.log('✅ SL selector already exists');
+            return true;
+        }
+        
+        console.log('📋 Adding SL selector...');
+        
+        const slDiv = document.createElement('div');
+        slDiv.className = 'form-group';
+        slDiv.style.cssText = 'margin-bottom: 15px;';
+        slDiv.innerHTML = `
+            <label for="slPositionSelect" style="font-weight: 600; display: block; margin-bottom: 5px;">
+                <i class="fas fa-sort-numeric-up"></i> Insert Position (SL Number)
+            </label>
+            <select id="slPositionSelect" class="modal-select" style="width: 100%; padding: 10px; border-radius: 6px; border: 2px solid var(--accent); background: var(--table-row); color: var(--main-txt); font-size: 1rem;">
+                <option value="end">End of List (New SL)</option>
+            </select>
+            <small style="font-size: 0.8rem; color: var(--accent2); opacity: 0.8; display: block; margin-top: 4px;">
+                <i class="fas fa-info-circle"></i> Select where to insert this customer
+            </small>
+        `;
+        
+        // Insert at the beginning
+        formGrid.insertBefore(slDiv, formGrid.firstChild);
+        
+        console.log('✅ SL selector added!');
+        populateSLDropdown();
+        return true;
+    }
+    
+    // ================================================================
+    // 2. POPULATE DROPDOWN
+    // ================================================================
+    
+    function populateSLDropdown() {
+        const select = document.getElementById('slPositionSelect');
+        if (!select) return;
+        
+        // Get customers
+        let allCustomers = [];
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) allCustomers = JSON.parse(data);
+        } catch(e) {}
+        if (!Array.isArray(allCustomers)) allCustomers = [];
+        
+        // Save to global
+        window.customers = allCustomers;
+        
+        select.innerHTML = '';
+        
+        // End of List
+        const endOpt = document.createElement('option');
+        endOpt.value = 'end';
+        endOpt.textContent = `End of List (SL ${allCustomers.length + 1})`;
+        select.appendChild(endOpt);
+        
+        if (allCustomers.length === 0) {
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = 'end';
+            emptyOpt.textContent = 'No customers yet - will be SL 1';
+            select.appendChild(emptyOpt);
+            return;
+        }
+        
+        // Add each customer
+        allCustomers.forEach((customer, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            const name = customer.name ? customer.name.substring(0, 30) : 'Unnamed';
+            option.textContent = `SL ${index + 1}: ${name}`;
+            select.appendChild(option);
+        });
+        
+        console.log('📋 Dropdown populated with', allCustomers.length, 'customers');
+    }
+    
+    // ================================================================
+    // 3. INSERT CUSTOMER AT POSITION
+    // ================================================================
+    
+    function insertCustomerAtPosition(name, phone, address, due, paid, source, note, position) {
+        if (!name || name.trim() === '') {
+            showToast('Please enter a customer name.', 'error');
+            return false;
+        }
+        
+        // Get current customers
+        let allCustomers = [];
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) allCustomers = JSON.parse(data);
+        } catch(e) {}
+        if (!Array.isArray(allCustomers)) allCustomers = [];
+        
+        // Create new customer
+        const newCustomer = {
+            id: Date.now().toString().slice(-10),
+            dateAdded: new Date().toLocaleDateString('en-GB'),
+            name: capitalizeWords(name.trim()),
+            phone: phone ? phone.trim() : '',
+            address: address ? address.trim() : '',
+            due: Math.round(Number(due)) || 0,
+            paid: Math.round(Number(paid)) || 0,
+            source: source ? source.trim() : '',
+            note: note ? note.trim() : '',
+            transactionHistory: []
+        };
+        
+        // Insert at position
+        if (position === 'end' || position === '') {
+            allCustomers.push(newCustomer);
+            console.log('📌 Added at END (SL', allCustomers.length, ')');
+        } else {
+            const insertIndex = parseInt(position);
+            if (isNaN(insertIndex) || insertIndex < 0 || insertIndex > allCustomers.length) {
+                allCustomers.push(newCustomer);
+            } else {
+                allCustomers.splice(insertIndex, 0, newCustomer);
+                console.log('📌 Inserted at SL', insertIndex + 1);
+            }
+        }
+        
+        // Update global
+        window.customers = allCustomers;
+        
+        // Save
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allCustomers));
+        } catch(e) {
+            console.error('❌ Save error:', e);
+            return false;
+        }
+        
+        // Re-render
+        if (typeof renderTable === 'function') renderTable();
+        
+        // Update dropdown
+        setTimeout(populateSLDropdown, 200);
+        
+        const slNumber = allCustomers.indexOf(newCustomer) + 1;
+        showToast(`✅ ${newCustomer.name} added at SL ${slNumber}`, 'success');
+        return true;
+    }
+    
+    // ================================================================
+    // 4. OVERRIDE FORM SUBMIT
+    // ================================================================
+    
+    function overrideFormSubmit() {
+        const form = document.getElementById('addCustomerForm');
+        if (!form) return;
+        
+        // Clone to remove all listeners
+        const newForm = form.cloneNode(true);
+        form.parentNode.replaceChild(newForm, form);
+        
+        newForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const name = document.getElementById('nameInput').value;
+            const phone = document.getElementById('phoneInput').value;
+            let address = document.getElementById('addressSelect').value;
+            const customAddress = document.getElementById('addressCustomInput').value;
+            const due = document.getElementById('dueInput').value;
+            const paid = document.getElementById('paidInput').value;
+            let source = document.getElementById('sourceSelect').value;
+            const customSource = document.getElementById('sourceCustomInput').value;
+            const note = document.getElementById('noteInput').value;
+            const slSelect = document.getElementById('slPositionSelect');
+            const position = slSelect ? slSelect.value : 'end';
+            
+            if (address === 'Other' && customAddress) address = customAddress;
+            if (source === 'Other' && customSource) source = customSource;
+            
+            const result = insertCustomerAtPosition(name, phone, address, due, paid, source, note, position);
+            
+            if (result) {
+                this.reset();
+                document.getElementById('addressCustomGroup').style.display = 'none';
+                document.getElementById('sourceCustomGroup').style.display = 'none';
+                setTimeout(() => {
+                    document.getElementById('nameInput').focus();
+                    populateSLDropdown();
+                }, 300);
+            }
+        }, true);
+        
+        console.log('✅ Form submit overridden');
+    }
+    
+    // ================================================================
+    // 5. WATCH FOR FORM OPEN
+    // ================================================================
+    
+    // When Add Customer button is clicked
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('#addCustomerBtn')) {
+            setTimeout(function() {
+                if (!document.getElementById('slPositionSelect')) {
+                    addSLSelectorToForm();
+                }
+                populateSLDropdown();
+            }, 300);
+        }
+    });
+    
+    // Watch for form becoming visible
+    const observer = new MutationObserver(function() {
+        const form = document.getElementById('customerFormContainer');
+        if (form && form.classList.contains('show')) {
+            setTimeout(function() {
+                if (!document.getElementById('slPositionSelect')) {
+                    addSLSelectorToForm();
+                }
+                populateSLDropdown();
+            }, 200);
+        }
+    });
+    
+    const container = document.getElementById('customerFormContainer');
+    if (container) {
+        observer.observe(container, { attributes: true, attributeFilter: ['class'] });
+    }
+    
+    // ================================================================
+    // 6. ADD CSS
+    // ================================================================
+    
+    if (!document.getElementById('slSelectorStyle')) {
+        const style = document.createElement('style');
+        style.id = 'slSelectorStyle';
+        style.textContent = `
+            #slPositionSelect {
+                border: 2px solid var(--accent);
+                background: var(--table-row);
+                color: var(--main-txt);
+                padding: 10px 12px;
+                border-radius: 6px;
+                font-size: 1rem;
+                width: 100%;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            #slPositionSelect:focus {
+                border-color: var(--accent2);
+                box-shadow: 0 0 0 3px rgba(41, 82, 163, 0.2);
+            }
+            #slPositionSelect option {
+                padding: 8px;
+                background: var(--table-row);
+                color: var(--main-txt);
+            }
+            [data-theme="dark"] #slPositionSelect {
+                background: #25355d;
+                color: #ffffff;
+                border-color: #395080;
+            }
+            [data-theme="dark"] #slPositionSelect option {
+                background: #25355d;
+                color: #ffffff;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // ================================================================
+    // 7. INITIALIZE
+    // ================================================================
+    
+    // Try on load
+    setTimeout(function() {
+        const form = document.getElementById('customerFormContainer');
+        if (form && form.classList.contains('show')) {
+            addSLSelectorToForm();
+            populateSLDropdown();
+        } else {
+            // Add hidden but ready
+            addSLSelectorToForm();
+        }
+        overrideFormSubmit();
+    }, 500);
+    
+    // Retry after 3 seconds if missing
+    setTimeout(function() {
+        if (!document.getElementById('slPositionSelect')) {
+            console.log('🔄 Retrying to add SL selector...');
+            addSLSelectorToForm();
+        }
+    }, 3000);
+    
+    console.log('✅ SL Selector System Ready!');
+    console.log('📋 Click "Add Customer" to see the SL dropdown');
+    
+})();
+</script>
+<!-- ========== SL POSITION SELECTOR - FORCE VISIBLE ========== -->
+<script>
+// ================================================================
+// SL POSITION SELECTOR - FORCE VISIBLE VERSION
+// ================================================================
+
+(function() {
+    'use strict';
+    
+    console.log('🔄 SL System Starting...');
+    
+    // ================================================================
+    // 1. FORCE ADD SL SELECTOR TO FORM (WITH VISIBILITY)
+    // ================================================================
+    
+    function addSLSelectorToForm() {
+        const formGrid = document.querySelector('.customer-form-grid');
+        if (!formGrid) {
+            console.log('❌ Form grid not found');
+            return false;
+        }
+        
+        // Check if already exists
+        if (document.getElementById('slPositionSelect')) {
+            console.log('✅ SL selector already exists');
+            // Make sure it's visible
+            const select = document.getElementById('slPositionSelect');
+            select.style.display = 'block';
+            select.style.visibility = 'visible';
+            select.style.opacity = '1';
+            populateSLDropdown();
+            return true;
+        }
+        
+        console.log('📋 Adding SL selector with FORCE VISIBLE...');
+        
+        const slDiv = document.createElement('div');
+        slDiv.className = 'form-group';
+        slDiv.id = 'slSelectorContainer';
+        slDiv.style.cssText = `
+            margin-bottom: 15px;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            width: 100% !important;
+        `;
+        slDiv.innerHTML = `
+            <label for="slPositionSelect" style="
+                font-weight: 600; 
+                display: block !important; 
+                margin-bottom: 5px;
+                color: var(--accent2);
+            ">
+                <i class="fas fa-sort-numeric-up"></i> Insert Position (SL Number)
+            </label>
+            <select id="slPositionSelect" class="modal-select" style="
+                width: 100% !important;
+                padding: 10px 12px !important;
+                border-radius: 6px !important;
+                border: 2px solid var(--accent) !important;
+                background: var(--table-row) !important;
+                color: var(--main-txt) !important;
+                font-size: 1rem !important;
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                cursor: pointer !important;
+            ">
+                <option value="end">End of List (New SL)</option>
+            </select>
+            <small style="
+                font-size: 0.8rem; 
+                color: var(--accent2); 
+                opacity: 0.8; 
+                display: block !important; 
+                margin-top: 4px;
+                visibility: visible !important;
+            ">
+                <i class="fas fa-info-circle"></i> Select where to insert this customer
+            </small>
+        `;
+        
+        // Insert at the beginning of the grid
+        formGrid.insertBefore(slDiv, formGrid.firstChild);
+        
+        console.log('✅ SL selector added with FORCE VISIBLE!');
+        populateSLDropdown();
+        return true;
+    }
+    
+    // ================================================================
+    // 2. POPULATE DROPDOWN
+    // ================================================================
+    
+    function populateSLDropdown() {
+        const select = document.getElementById('slPositionSelect');
+        if (!select) {
+            console.log('❌ SL select not found');
+            return;
+        }
+        
+        // FORCE VISIBLE
+        select.style.display = 'block';
+        select.style.visibility = 'visible';
+        select.style.opacity = '1';
+        
+        // Get customers
+        let allCustomers = [];
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) allCustomers = JSON.parse(data);
+        } catch(e) {}
+        if (!Array.isArray(allCustomers)) allCustomers = [];
+        
+        // Save to global
+        window.customers = allCustomers;
+        
+        select.innerHTML = '';
+        
+        // End of List
+        const endOpt = document.createElement('option');
+        endOpt.value = 'end';
+        endOpt.textContent = `End of List (SL ${allCustomers.length + 1})`;
+        select.appendChild(endOpt);
+        
+        if (allCustomers.length === 0) {
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = 'end';
+            emptyOpt.textContent = 'No customers yet - will be SL 1';
+            select.appendChild(emptyOpt);
+            console.log('📋 No customers found');
+            return;
+        }
+        
+        // Add each customer
+        allCustomers.forEach((customer, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            const name = customer.name ? customer.name.substring(0, 30) : 'Unnamed';
+            option.textContent = `SL ${index + 1}: ${name}`;
+            select.appendChild(option);
+        });
+        
+        console.log('📋 Dropdown populated with', allCustomers.length, 'customers');
+    }
+    
+    // ================================================================
+    // 3. INSERT CUSTOMER AT POSITION
+    // ================================================================
+    
+    function insertCustomerAtPosition(name, phone, address, due, paid, source, note, position) {
+        if (!name || name.trim() === '') {
+            showToast('Please enter a customer name.', 'error');
+            return false;
+        }
+        
+        // Get current customers
+        let allCustomers = [];
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) allCustomers = JSON.parse(data);
+        } catch(e) {}
+        if (!Array.isArray(allCustomers)) allCustomers = [];
+        
+        // Create new customer
+        const newCustomer = {
+            id: Date.now().toString().slice(-10),
+            dateAdded: new Date().toLocaleDateString('en-GB'),
+            name: capitalizeWords(name.trim()),
+            phone: phone ? phone.trim() : '',
+            address: address ? address.trim() : '',
+            due: Math.round(Number(due)) || 0,
+            paid: Math.round(Number(paid)) || 0,
+            source: source ? source.trim() : '',
+            note: note ? note.trim() : '',
+            transactionHistory: []
+        };
+        
+        // Insert at position
+        if (position === 'end' || position === '') {
+            allCustomers.push(newCustomer);
+            console.log('📌 Added at END (SL', allCustomers.length, ')');
+        } else {
+            const insertIndex = parseInt(position);
+            if (isNaN(insertIndex) || insertIndex < 0 || insertIndex > allCustomers.length) {
+                allCustomers.push(newCustomer);
+            } else {
+                allCustomers.splice(insertIndex, 0, newCustomer);
+                console.log('📌 Inserted at SL', insertIndex + 1);
+            }
+        }
+        
+        // Update global
+        window.customers = allCustomers;
+        
+        // Save
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(allCustomers));
+        } catch(e) {
+            console.error('❌ Save error:', e);
+            return false;
+        }
+        
+        // Re-render
+        if (typeof renderTable === 'function') renderTable();
+        
+        // Update dropdown
+        setTimeout(populateSLDropdown, 200);
+        
+        const slNumber = allCustomers.indexOf(newCustomer) + 1;
+        showToast(`✅ ${newCustomer.name} added at SL ${slNumber}`, 'success');
+        return true;
+    }
+    
+    // ================================================================
+    // 4. OVERRIDE FORM SUBMIT
+    // ================================================================
+    
+    function overrideFormSubmit() {
+        const form = document.getElementById('addCustomerForm');
+        if (!form) {
+            console.log('❌ Form not found');
+            return;
+        }
+        
+        // Clone to remove all listeners
+        const newForm = form.cloneNode(true);
+        form.parentNode.replaceChild(newForm, form);
+        
+        newForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const name = document.getElementById('nameInput').value;
+            const phone = document.getElementById('phoneInput').value;
+            let address = document.getElementById('addressSelect').value;
+            const customAddress = document.getElementById('addressCustomInput').value;
+            const due = document.getElementById('dueInput').value;
+            const paid = document.getElementById('paidInput').value;
+            let source = document.getElementById('sourceSelect').value;
+            const customSource = document.getElementById('sourceCustomInput').value;
+            const note = document.getElementById('noteInput').value;
+            const slSelect = document.getElementById('slPositionSelect');
+            const position = slSelect ? slSelect.value : 'end';
+            
+            console.log('📌 Position:', position);
+            
+            if (address === 'Other' && customAddress) address = customAddress;
+            if (source === 'Other' && customSource) source = customSource;
+            
+            const result = insertCustomerAtPosition(name, phone, address, due, paid, source, note, position);
+            
+            if (result) {
+                this.reset();
+                document.getElementById('addressCustomGroup').style.display = 'none';
+                document.getElementById('sourceCustomGroup').style.display = 'none';
+                setTimeout(() => {
+                    document.getElementById('nameInput').focus();
+                    populateSLDropdown();
+                }, 300);
+            }
+        }, true);
+        
+        console.log('✅ Form submit overridden');
+    }
+    
+    // ================================================================
+    // 5. FORCE SHOW ON FORM OPEN
+    // ================================================================
+    
+    // When Add Customer button is clicked - FORCE SHOW
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('#addCustomerBtn')) {
+            console.log('📋 Add Customer clicked - forcing SL selector');
+            setTimeout(function() {
+                if (!document.getElementById('slPositionSelect')) {
+                    addSLSelectorToForm();
+                }
+                // FORCE SHOW the container
+                const container = document.getElementById('slSelectorContainer');
+                if (container) {
+                    container.style.display = 'block !important';
+                    container.style.visibility = 'visible !important';
+                    container.style.opacity = '1 !important';
+                }
+                populateSLDropdown();
+            }, 400);
+        }
+    });
+    
+    // Watch for form becoming visible
+    const observer = new MutationObserver(function() {
+        const form = document.getElementById('customerFormContainer');
+        if (form && form.classList.contains('show')) {
+            console.log('📋 Form opened - showing SL selector');
+            setTimeout(function() {
+                if (!document.getElementById('slPositionSelect')) {
+                    addSLSelectorToForm();
+                }
+                // FORCE SHOW
+                const container = document.getElementById('slSelectorContainer');
+                if (container) {
+                    container.style.display = 'block';
+                    container.style.visibility = 'visible';
+                    container.style.opacity = '1';
+                }
+                const select = document.getElementById('slPositionSelect');
+                if (select) {
+                    select.style.display = 'block';
+                    select.style.visibility = 'visible';
+                    select.style.opacity = '1';
+                }
+                populateSLDropdown();
+            }, 300);
+        }
+    });
+    
+    const container = document.getElementById('customerFormContainer');
+    if (container) {
+        observer.observe(container, { attributes: true, attributeFilter: ['class'] });
+    }
+    
+    // ================================================================
+    // 6. ADD CSS - FORCE VISIBLE
+    // ================================================================
+    
+    if (!document.getElementById('slSelectorStyle')) {
+        const style = document.createElement('style');
+        style.id = 'slSelectorStyle';
+        style.textContent = `
+            #slSelectorContainer {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+            #slPositionSelect {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                width: 100% !important;
+                padding: 10px 12px !important;
+                border-radius: 6px !important;
+                border: 2px solid var(--accent) !important;
+                background: var(--table-row) !important;
+                color: var(--main-txt) !important;
+                font-size: 1rem !important;
+                cursor: pointer !important;
+            }
+            #slPositionSelect:focus {
+                border-color: var(--accent2) !important;
+                box-shadow: 0 0 0 3px rgba(41, 82, 163, 0.2) !important;
+            }
+            #slPositionSelect option {
+                padding: 8px !important;
+                background: var(--table-row) !important;
+                color: var(--main-txt) !important;
+            }
+            [data-theme="dark"] #slPositionSelect {
+                background: #25355d !important;
+                color: #ffffff !important;
+                border-color: #395080 !important;
+            }
+            [data-theme="dark"] #slPositionSelect option {
+                background: #25355d !important;
+                color: #ffffff !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // ================================================================
+    // 7. INITIALIZE - FORCE ADD
+    // ================================================================
+    
+    // Add on load (hidden but ready)
+    setTimeout(function() {
+        addSLSelectorToForm();
+        overrideFormSubmit();
+    }, 500);
+    
+    // Retry after 2 seconds
+    setTimeout(function() {
+        if (!document.getElementById('slPositionSelect')) {
+            console.log('🔄 Retrying to add SL selector...');
+            addSLSelectorToForm();
+        }
+    }, 2000);
+    
+    // Retry after 5 seconds
+    setTimeout(function() {
+        if (!document.getElementById('slPositionSelect')) {
+            console.log('🔄 Final retry to add SL selector...');
+            addSLSelectorToForm();
+        }
+    }, 5000);
+    
+    console.log('✅ SL Selector System Ready!');
+    console.log('📋 Click "Add Customer" to see the SL dropdown');
+    
+})();
+</script>
+<!-- ========== FIX: HIDDEN DUE IN LIVE STATS ========== -->
+<script>
+// ================================================================
+// FIX: Hidden Due Customers Should NOT Count as Paid
+// ================================================================
+
+(function() {
+    'use strict';
+    
+    console.log('🔄 Fixing Hidden Due in Live Stats...');
+    
+    // ================================================================
+    // 1. FIX: renderLiveStats() - Hidden Due NOT counted as Paid
+    // ================================================================
+    
+    // Store the original function
+    const originalRenderLiveStats = window.renderLiveStats;
+    
+    // Override with fixed version
+    window.renderLiveStats = function() {
+        const statsGrid = document.getElementById("liveStatsGrid");
+        if (!statsGrid) {
+            console.log('❌ Stats grid not found');
+            return;
+        }
+        
+        statsGrid.innerHTML = "";
+
+        if (!currentDisplayCustomers || currentDisplayCustomers.length === 0) {
+            const info = document.getElementById("statsFilterInfo");
+            if (info) info.textContent = "Showing statistics for 0 customers.";
+            return;
+        }
+
+        let totalDue = 0;
+        let totalPaid = 0;
+        let dueCount = 0;
+        let paidCount = 0;
+        let partialCount = 0;
+        let hiddenDueCount = 0;
+
+        currentDisplayCustomers.forEach(c => {
+            const due = Number(c.due) || 0;
+            const paid = Number(c.paid) || 0;
+            const currentDue = Math.max(0, due - paid);
+            
+            totalDue += due;
+            totalPaid += paid;
+            
+            // ========== FIXED STATUS LOGIC ==========
+            if (due === 0 && paid === 0) {
+                // Hidden Due - customer has no payment recorded
+                hiddenDueCount++;
+                dueCount++; // Count as due (since they owe money)
+            } else if (currentDue > 0 && paid === 0) {
+                // Full Due
+                dueCount++;
+            } else if (currentDue > 0 && paid > 0) {
+                // Partial Paid
+                partialCount++;
+            } else {
+                // Fully Paid (currentDue === 0 and either due or paid has value)
+                paidCount++;
+            }
+        });
+
+        const netDue = Math.max(0, totalDue - totalPaid);
+        const totalCustomers = currentDisplayCustomers.length;
+
+        // ========== STATS DATA WITH HIDDEN DUE ==========
+        const statsData = [
+            { title: "Total Customers", value: totalCustomers, type: "total" },
+            { title: "Total Paid Amount", value: formatMoneyDisplay(totalPaid), type: "paid" },
+            { title: "Fully Paid Customers", value: paidCount, type: "paid-count" },
+            { title: "Total Starting Due", value: formatMoneyDisplay(totalDue), type: "total" },
+            { title: "Net Outstanding Due", value: formatMoneyDisplay(netDue), type: "due" },
+            { title: "Customers with Due", value: dueCount, type: "due-count" },
+            { title: "Partially Paid", value: partialCount, type: "partial" },
+            { title: "Hidden Due", value: hiddenDueCount, type: "hidden-due" }  // ← FIXED: Shows Hidden Due
+        ];
+
+        statsData.forEach(stat => {
+            const card = document.createElement("div");
+            card.className = "stat-card";
+            card.setAttribute("data-type", stat.type);
+            
+            // Special styling for Hidden Due
+            let valueColor = '';
+            if (stat.type === 'hidden-due') {
+                valueColor = 'color: #ff6b6b;';
+            }
+            
+            card.innerHTML = `
+                <div class="stat-title">${stat.title}</div>
+                <div class="stat-value" style="${valueColor}">${stat.value}</div>
+            `;
+            statsGrid.appendChild(card);
+        });
+
+        // Filter info
+        let activeFilters = [];
+        if (window.addressFilter) activeFilters.push(`Address: ${window.addressFilter}`);
+        if (window.statusFilter) activeFilters.push(`Status: ${window.statusFilter}`);
+        if (window.sourceFilter) activeFilters.push(`Source: ${window.sourceFilter}`);
+        if (window.searchQuery) activeFilters.push(`Search: "${window.searchQuery}"`);
+
+        const info = document.getElementById("statsFilterInfo");
+        if (info) {
+            info.textContent = `Showing statistics for ${totalCustomers} filtered customers. ${activeFilters.length > 0 ? `(Filters: ${activeFilters.join(', ')})` : '(No active filters)'}`;
+        }
+        
+        console.log('📊 Live Stats Updated - Hidden Due:', hiddenDueCount);
+    };
+    
+    // ================================================================
+    // 2. FIX: renderTable() - Status display
+    // ================================================================
+    
+    // Store the original renderTable
+    const originalRenderTable = window.renderTable;
+    
+    // Override with fixed version (only if needed)
+    if (originalRenderTable) {
+        window.renderTable = function() {
+            // Call original first
+            originalRenderTable();
+            
+            // Then fix any status display issues
+            const rows = document.querySelectorAll('#customerTableBody tr');
+            rows.forEach(row => {
+                const statusCell = row.querySelector('.status-col');
+                if (statusCell) {
+                    const status = statusCell.getAttribute('data-status');
+                    // Make sure Hidden Due is styled correctly
+                    if (status === 'Hidden Due') {
+                        statusCell.style.color = '#ff6b6b';
+                        statusCell.style.fontWeight = 'bold';
+                    }
+                }
+            });
+            
+            // Update header stats
+            updateHeaderStats();
+        };
+    }
+    
+    // ================================================================
+    // 3. FIX: updateHeaderStats() - Footer stats
+    // ================================================================
+    
+    // Store the original
+    const originalHeaderStats = window.renderHeaderStats;
+    
+    if (originalHeaderStats) {
+        window.renderHeaderStats = function() {
+            // Call original
+            originalHeaderStats();
+            
+            // Fix footer stats if needed
+            const total = window.customers ? window.customers.length : 0;
+            
+            let fullPaid = 0;
+            let partialPaid = 0;
+            let due = 0;
+            let hiddenDue = 0;
+            
+            (window.customers || []).forEach(c => {
+                const currentDue = Math.max(0, c.due - c.paid);
+                
+                if (c.due === 0 && c.paid === 0) {
+                    hiddenDue++;
+                    due++;
+                } else if (currentDue > 0 && c.paid === 0) {
+                    due++;
+                } else if (currentDue > 0 && c.paid > 0) {
+                    partialPaid++;
+                } else {
+                    fullPaid++;
+                }
+            });
+            
+            const totalPaid = fullPaid + partialPaid;
+            
+            // Update footer
+            const footerTotal = document.getElementById("footerTotalCount");
+            const footerPaid = document.getElementById("footerPaidCount");
+            const footerFull = document.getElementById("footerFullPaid");
+            const footerPartial = document.getElementById("footerPartialPaid");
+            const footerDue = document.getElementById("footerDueCount");
+            
+            if (footerTotal) footerTotal.textContent = total;
+            if (footerPaid) footerPaid.textContent = totalPaid;
+            if (footerFull) footerFull.textContent = fullPaid;
+            if (footerPartial) footerPartial.textContent = partialPaid;
+            if (footerDue) footerDue.textContent = due;
+        };
+    }
+    
+    // ================================================================
+    // 4. ADD CSS FOR HIDDEN DUE STAT CARD
+    // ================================================================
+    
+    if (!document.getElementById('hiddenDueStyle')) {
+        const style = document.createElement('style');
+        style.id = 'hiddenDueStyle';
+        style.textContent = `
+            .stat-card[data-type="hidden-due"] {
+                border-color: #ff6b6b !important;
+                background: rgba(255, 107, 107, 0.1) !important;
+            }
+            .stat-card[data-type="hidden-due"] .stat-value {
+                color: #ff6b6b !important;
+                font-weight: bold !important;
+            }
+            [data-theme="dark"] .stat-card[data-type="hidden-due"] {
+                background: rgba(255, 107, 107, 0.2) !important;
+                border-color: #ff6b6b !important;
+            }
+            [data-theme="dark"] .stat-card[data-type="hidden-due"] .stat-value {
+                color: #ff8a8a !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // ================================================================
+    // 5. FORCE REFRESH STATS
+    // ================================================================
+    
+    // Refresh stats after page load
+    setTimeout(function() {
+        if (typeof renderLiveStats === 'function') {
+            renderLiveStats();
+            console.log('✅ Live Stats refreshed with Hidden Due fix');
+        }
+        if (typeof renderHeaderStats === 'function') {
+            renderHeaderStats();
+        }
+    }, 1000);
+    
+    console.log('✅ Hidden Due Fix Applied!');
+    console.log('📊 Hidden Due customers will show as "Hidden Due" in stats');
+    
+})();
+</script>
+<!-- ========== STATS LIST WITH SEARCH & PRINT ========== -->
+<script>
+// ================================================================
+// CLICKABLE STATS: Show customer list with search & print
+// ================================================================
+
+(function() {
+    'use strict';
+    
+    console.log('🔄 Initializing Stats Cards with Search & Print...');
+    
+    // Store current list data for search/print
+    let currentListCustomers = [];
+    let currentListCategory = '';
+    let currentListLabel = {};
+    
+    // ================================================================
+    // 1. GET CUSTOMERS BY CATEGORY
+    // ================================================================
+    
+    function getCustomersByCategory(category) {
+        const allCustomers = window.customers || [];
+        let result = [];
+        
+        allCustomers.forEach(c => {
+            const due = Number(c.due) || 0;
+            const paid = Number(c.paid) || 0;
+            const currentDue = Math.max(0, due - paid);
+            let status = '';
+            
+            if (due === 0 && paid === 0) {
+                status = 'hidden-due';
+            } else if (currentDue > 0 && paid === 0) {
+                status = 'due';
+            } else if (currentDue > 0 && paid > 0) {
+                status = 'partial';
+            } else {
+                status = 'paid';
+            }
+            
+            if (status === category) {
+                result.push(c);
+            }
+        });
+        
+        return result;
+    }
+    
+    // ================================================================
+    // 2. RENDER LIST (with search filter)
+    // ================================================================
+    
+    function renderStatsList(searchTerm = '') {
+        const container = document.getElementById('statsCustomerList');
+        if (!container) return;
+        
+        // Find the list body container
+        const listBody = container.querySelector('.stats-list-body');
+        if (!listBody) return;
+        
+        // Filter customers
+        const search = searchTerm.toLowerCase().trim();
+        let filtered = currentListCustomers;
+        
+        if (search) {
+            filtered = currentListCustomers.filter(c => {
+                const name = (c.name || '').toLowerCase();
+                const phone = (c.phone || '').toLowerCase();
+                const address = (c.address || '').toLowerCase();
+                const source = (c.source || '').toLowerCase();
+                return name.includes(search) || phone.includes(search) || 
+                       address.includes(search) || source.includes(search);
+            });
+        }
+        
+        const isDark = document.body.getAttribute('data-theme') === 'dark';
+        const borderColor = isDark ? '#395080' : '#cdd8ea';
+        const hoverBg = isDark ? '#2c3d67' : '#e8f1ff';
+        
+        // Update count
+        const countSpan = container.querySelector('.list-count');
+        if (countSpan) {
+            countSpan.textContent = `${filtered.length} of ${currentListCustomers.length} customers`;
+        }
+        
+        // Build rows
+        if (filtered.length === 0) {
+            listBody.innerHTML = `
+                <div style="
+                    text-align: center;
+                    padding: 40px 20px;
+                    color: var(--accent2);
+                    font-style: italic;
+                ">
+                    <i class="fas fa-search" style="font-size: 2rem; display: block; margin-bottom: 10px; opacity: 0.5;"></i>
+                    No customers found matching "<strong>${searchTerm}</strong>"
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '';
+        filtered.forEach((c, index) => {
+            const currentDue = Math.max(0, c.due - c.paid);
+            const statusColor = currentDue > 0 ? '#dc3545' : '#28a745';
+            
+            html += `
+                <div style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 12px;
+                    border-bottom: 1px solid ${borderColor};
+                    border-radius: 4px;
+                    margin-bottom: 2px;
+                    transition: background 0.2s;
+                "
+                onmouseover="this.style.background='${hoverBg}'" 
+                onmouseout="this.style.background='transparent'">
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <span style="font-weight: 600; color: var(--accent); min-width: 30px;">${index + 1}.</span>
+                        <span style="font-weight: 500;">${capitalizeWords(c.name)}</span>
+                        <span style="font-size: 0.8rem; color: var(--accent2);">${c.phone || 'N/A'}</span>
+                        <span style="font-size: 0.7rem; color: var(--accent2); background: var(--btn-bg); padding: 2px 10px; border-radius: 12px;">${c.source || 'No source'}</span>
+                    </div>
+                    <div style="display: flex; gap: 15px; font-size: 0.85rem; flex-wrap: wrap;">
+                        <span>Due: <strong>${formatMoneyDisplay(c.due)}</strong></span>
+                        <span>Paid: <strong>${formatMoneyDisplay(c.paid)}</strong></span>
+                        <span style="font-weight: bold; color: ${statusColor};">Due: ${formatMoneyDisplay(currentDue)}</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        listBody.innerHTML = html;
+    }
+    
+    // ================================================================
+    // 3. CREATE LIST CONTAINER
+    // ================================================================
+    
+    function showCustomerListOnPage(category, customers, label) {
+        if (!customers || customers.length === 0) {
+            showToast('No customers in this category', 'info');
+            return;
+        }
+        
+        // Store for search/print
+        currentListCustomers = customers;
+        currentListCategory = category;
+        currentListLabel = label;
+        
+        // Remove existing list
+        const existingList = document.getElementById('statsCustomerList');
+        if (existingList) {
+            existingList.remove();
+        }
+        
+        const isDark = document.body.getAttribute('data-theme') === 'dark';
+        const borderColor = isDark ? '#395080' : '#cdd8ea';
+        const bgColor = isDark ? '#20273c' : '#ffffff';
+        
+        // Create container
+        const container = document.createElement('div');
+        container.id = 'statsCustomerList';
+        container.style.cssText = `
+            width: 100%;
+            max-width: 1200px;
+            margin: 15px auto;
+            padding: 15px;
+            background: ${bgColor};
+            border: 1px solid ${borderColor};
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            animation: slideDown 0.3s ease;
+        `;
+        
+        container.innerHTML = `
+            <!-- Header -->
+            <div style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 2px solid ${label.color};
+                padding-bottom: 10px;
+                margin-bottom: 12px;
+                flex-wrap: wrap;
+                gap: 10px;
+            ">
+                <h3 style="
+                    margin: 0;
+                    color: ${label.color};
+                    font-size: 1.2rem;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                ">
+                    <i class="fas ${label.icon}" style="color: ${label.color};"></i>
+                    ${label.title}
+                    <span class="list-count" style="
+                        font-size: 0.85rem;
+                        color: var(--accent2);
+                        font-weight: normal;
+                        margin-left: 8px;
+                        background: var(--btn-bg);
+                        padding: 2px 12px;
+                        border-radius: 12px;
+                    ">
+                        ${customers.length} customers
+                    </span>
+                </h3>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button onclick="printStatsList()" style="
+                        background: var(--btn-print-bg);
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        padding: 6px 14px;
+                        cursor: pointer;
+                        font-size: 0.9rem;
+                        transition: all 0.2s;
+                        display: flex;
+                        align-items: center;
+                        gap: 5px;
+                    "
+                    onmouseover="this.style.opacity='0.9'; this.style.transform='translateY(-1px)'" 
+                    onmouseout="this.style.opacity='1'; this.style.transform='translateY(0)'">
+                        <i class="fas fa-print"></i> Print
+                    </button>
+                    <button onclick="closeCustomerList()" style="
+                        background: var(--btn-bg);
+                        color: var(--btn-txt);
+                        border: none;
+                        border-radius: 4px;
+                        padding: 6px 14px;
+                        cursor: pointer;
+                        font-size: 0.9rem;
+                        transition: all 0.2s;
+                    "
+                    onmouseover="this.style.background='var(--btn-bg-hover)'" 
+                    onmouseout="this.style.background='var(--btn-bg)'">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Search Box -->
+            <div style="
+                display: flex;
+                gap: 10px;
+                margin-bottom: 12px;
+                flex-wrap: wrap;
+            ">
+                <div style="flex: 1; min-width: 200px; position: relative;">
+                    <input type="text" id="statsSearchInput" placeholder="Search by name, phone, address, source..." style="
+                        width: 100%;
+                        padding: 8px 12px 8px 35px;
+                        border: 1px solid ${borderColor};
+                        border-radius: 6px;
+                        background: var(--table-row);
+                        color: var(--main-txt);
+                        font-size: 0.9rem;
+                        outline: none;
+                        transition: border 0.2s;
+                    "
+                    onfocus="this.style.borderColor='var(--accent)'" 
+                    onblur="this.style.borderColor='${borderColor}'"
+                    oninput="handleStatsSearch(this.value)">
+                    <i class="fas fa-search" style="
+                        position: absolute;
+                        left: 10px;
+                        top: 50%;
+                        transform: translateY(-50%);
+                        color: var(--accent2);
+                        opacity: 0.6;
+                    "></i>
+                </div>
+                <span style="
+                    font-size: 0.8rem;
+                    color: var(--accent2);
+                    display: flex;
+                    align-items: center;
+                    padding: 0 8px;
+                ">
+                    <i class="fas fa-info-circle" style="margin-right: 4px;"></i>
+                    <span class="list-count">${customers.length} customers</span>
+                </span>
+            </div>
+            
+            <!-- List Body -->
+            <div class="stats-list-body" style="
+                max-height: 400px;
+                overflow-y: auto;
+                padding-right: 5px;
+            ">
+                <!-- Will be populated by renderStatsList -->
+            </div>
+            
+            <!-- Footer -->
+            <div style="
+                margin-top: 12px;
+                padding-top: 10px;
+                border-top: 1px solid ${borderColor};
+                text-align: center;
+                font-size: 0.8rem;
+                color: var(--accent2);
+            ">
+                <i class="fas fa-info-circle"></i> 
+                <span class="list-count">${customers.length}</span> customers in this category
+            </div>
+        `;
+        
+        // Insert after stats section
+        const statsSection = document.getElementById('statsSection');
+        if (statsSection) {
+            statsSection.parentNode.insertBefore(container, statsSection.nextSibling);
+        } else {
+            document.querySelector('.input-sections-container').appendChild(container);
+        }
+        
+        // Render initial list
+        renderStatsList('');
+        
+        // Scroll to show
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    
+    // ================================================================
+    // 4. SEARCH HANDLER
+    // ================================================================
+    
+    window.handleStatsSearch = function(value) {
+        renderStatsList(value);
+    };
+    
+    // ================================================================
+    // 5. CLOSE LIST
+    // ================================================================
+    
+    window.closeCustomerList = function() {
+        const list = document.getElementById('statsCustomerList');
+        if (list) {
+            list.style.transition = 'opacity 0.3s ease';
+            list.style.opacity = '0';
+            setTimeout(() => {
+                if (list.parentNode) list.remove();
+            }, 300);
+        }
+    };
+    
+    // ================================================================
+    // 6. PRINT LIST
+    // ================================================================
+    
+    window.printStatsList = function() {
+        const customers = currentListCustomers;
+        const label = currentListLabel;
+        
+        if (!customers || customers.length === 0) {
+            showToast('No customers to print', 'warning');
+            return;
+        }
+        
+        const now = new Date();
+        const printTime = now.toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        // Build print HTML
+        let rowsHtml = '';
+        customers.forEach((c, index) => {
+            const currentDue = Math.max(0, c.due - c.paid);
+            rowsHtml += `
+                <tr>
+                    <td style="text-align: center; padding: 4px 8px; border: 0.5px solid #000;">${index + 1}</td>
+                    <td style="padding: 4px 8px; border: 0.5px solid #000;">${capitalizeWords(c.name)}</td>
+                    <td style="padding: 4px 8px; border: 0.5px solid #000;">${c.phone || 'N/A'}</td>
+                    <td style="padding: 4px 8px; border: 0.5px solid #000;">${capitalizeWords(c.address) || 'N/A'}</td>
+                    <td style="text-align: center; padding: 4px 8px; border: 0.5px solid #000;">${c.source || 'N/A'}</td>
+                    <td style="text-align: right; padding: 4px 8px; border: 0.5px solid #000;">${formatMoneyDisplay(c.due)}</td>
+                    <td style="text-align: right; padding: 4px 8px; border: 0.5px solid #000;">${formatMoneyDisplay(c.paid)}</td>
+                    <td style="text-align: right; padding: 4px 8px; border: 0.5px solid #000; font-weight: bold;">${formatMoneyDisplay(currentDue)}</td>
+                </tr>
+            `;
+        });
+        
+        const printHtml = `
+            <div style="
+                font-family: Arial, sans-serif;
+                font-size: 10pt;
+                line-height: 1.3;
+                color: #000;
+                padding: 10mm 15mm;
+                width: 210mm;
+                min-height: 297mm;
+                box-sizing: border-box;
+                background: #fff;
+            ">
+                <div style="text-align: center; border-bottom: 2px solid #1a2c5b; padding-bottom: 8px; margin-bottom: 15px;">
+                    <h1 style="font-size: 18pt; font-weight: bold; color: #1a2c5b; margin: 0 0 4px 0;">Roza Gift Corner & Electric</h1>
+                    <p style="font-size: 10pt; margin: 2px 0; color: #333;">Moshjid Market, Naohata Mor, Mohadevpur, Naogaon</p>
+                    <p style="font-size: 9pt; margin: 2px 0; color: #333;">Contact: +8801715986646</p>
+                    <p style="font-size: 9pt; margin-top: 5px; color: #666;">${label.title} | Generated: ${printTime}</p>
+                </div>
+                
+                <h3 style="text-align: center; margin: 10px 0 8px; color: #1a2c5b;">${label.title}</h3>
+                <p style="text-align: center; font-size: 9pt; color: #666; margin-bottom: 10px;">Total: ${customers.length} customers</p>
+                
+                <table style="width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 15px;">
+                    <thead>
+                        <tr style="background: #e8f1ff;">
+                            <th style="text-align: center; padding: 4px 8px; border: 0.5px solid #000; white-space: nowrap;">SL</th>
+                            <th style="text-align: left; padding: 4px 8px; border: 0.5px solid #000; white-space: nowrap;">Customer Name</th>
+                            <th style="text-align: left; padding: 4px 8px; border: 0.5px solid #000; white-space: nowrap;">Phone</th>
+                            <th style="text-align: left; padding: 4px 8px; border: 0.5px solid #000; white-space: nowrap;">Address</th>
+                            <th style="text-align: center; padding: 4px 8px; border: 0.5px solid #000; white-space: nowrap;">Source</th>
+                            <th style="text-align: center; padding: 4px 8px; border: 0.5px solid #000; white-space: nowrap;">Total Due</th>
+                            <th style="text-align: center; padding: 4px 8px; border: 0.5px solid #000; white-space: nowrap;">Total Paid</th>
+                            <th style="text-align: center; padding: 4px 8px; border: 0.5px solid #000; white-space: nowrap;">Current Due</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+                
+                <div style="text-align: center; border-top: 1px solid #1a2c5b; padding-top: 10px; margin-top: 15px;">
+                    <p style="font-size: 8pt; color: #666; margin: 2px 0;">
+                        <strong>Prepared by: Farhan Tanzid Shiyam</strong>
+                    </p>
+                    <p style="font-size: 8pt; color: #666; margin: 2px 0;">
+                        RGCE SparkDesk v1.4 | Computer generated report | No signature required
+                    </p>
+                </div>
+            </div>
+        `;
+        
+        // Print
+        const printArea = document.getElementById("printArea");
+        printArea.innerHTML = printHtml;
+        
+        setTimeout(() => {
+            window.print();
+            setTimeout(() => {
+                printArea.innerHTML = "";
+            }, 500);
+        }, 100);
+        
+        showToast(`Printing ${customers.length} customers...`, 'info');
+    };
+    
+    // ================================================================
+    // 7. MAKE STAT CARDS CLICKABLE
+    // ================================================================
+    
+    function makeStatsClickable() {
+        const statsGrid = document.getElementById('liveStatsGrid');
+        if (!statsGrid) return;
+        
+        setTimeout(function() {
+            const cards = statsGrid.querySelectorAll('.stat-card');
+            
+            cards.forEach(card => {
+                card.style.cursor = 'pointer';
+                card.style.transition = 'all 0.2s ease';
+                
+                card.addEventListener('mouseenter', function() {
+                    this.style.transform = 'translateY(-3px)';
+                    this.style.boxShadow = '0 6px 20px rgba(0,0,0,0.15)';
+                });
+                
+                card.addEventListener('mouseleave', function() {
+                    this.style.transform = 'translateY(0)';
+                    this.style.boxShadow = 'none';
+                });
+                
+                card.addEventListener('click', function() {
+                    const type = this.getAttribute('data-type');
+                    
+                    closeCustomerList();
+                    
+                    const labels = {
+                        'total': { title: '📊 All Customers', icon: 'fa-users', color: '#2952a3' },
+                        'paid-count': { title: '✅ Fully Paid Customers', icon: 'fa-check-circle', color: '#28a745' },
+                        'due-count': { title: '🔴 Customers with Due', icon: 'fa-exclamation-circle', color: '#dc3545' },
+                        'partial': { title: '🟡 Partially Paid Customers', icon: 'fa-clock', color: '#ffc107' },
+                        'hidden-due': { title: '⚫ Hidden Due Customers', icon: 'fa-eye-slash', color: '#ff6b6b' },
+                        'paid': { title: '💰 Total Paid Amount', icon: 'fa-money-bill-wave', color: '#28a745' },
+                        'due': { title: '📊 Total Due Amount', icon: 'fa-file-invoice-dollar', color: '#dc3545' }
+                    };
+                    
+                    let customers = [];
+                    let category = type;
+                    let label = labels[type] || { title: type, icon: 'fa-tag', color: '#6c757d' };
+                    
+                    const typeMap = {
+                        'total': 'all',
+                        'paid-count': 'paid',
+                        'due-count': 'due',
+                        'partial': 'partial',
+                        'hidden-due': 'hidden-due',
+                        'paid': 'paid',
+                        'due': 'due'
+                    };
+                    
+                    const mappedType = typeMap[type] || type;
+                    
+                    if (mappedType === 'all') {
+                        customers = window.customers || [];
+                        category = 'total';
+                        label = { title: '📊 All Customers', icon: 'fa-users', color: '#2952a3' };
+                    } else {
+                        customers = getCustomersByCategory(mappedType);
+                        category = mappedType;
+                    }
+                    
+                    if (customers.length === 0) {
+                        showToast('No customers in this category', 'info');
+                        return;
+                    }
+                    
+                    showCustomerListOnPage(category, customers, label);
+                });
+            });
+            
+            console.log('✅ Stats cards ready!');
+        }, 500);
+    }
+    
+    // ================================================================
+    // 8. WATCH FOR STATS UPDATES
+    // ================================================================
+    
+    const originalRenderLiveStats = window.renderLiveStats;
+    
+    if (originalRenderLiveStats) {
+        window.renderLiveStats = function() {
+            originalRenderLiveStats();
+            setTimeout(makeStatsClickable, 300);
+        };
+    }
+    
+    // ================================================================
+    // 9. ADD CSS
+    // ================================================================
+    
+    if (!document.getElementById('statsListStyle')) {
+        const style = document.createElement('style');
+        style.id = 'statsListStyle';
+        style.textContent = `
+            #statsCustomerList {
+                animation: slideDown 0.3s ease;
+            }
+            #statsCustomerList .stats-list-body {
+                scrollbar-width: thin;
+            }
+            #statsCustomerList .stats-list-body::-webkit-scrollbar {
+                width: 5px;
+            }
+            #statsCustomerList .stats-list-body::-webkit-scrollbar-track {
+                background: var(--table-row-alt);
+                border-radius: 10px;
+            }
+            #statsCustomerList .stats-list-body::-webkit-scrollbar-thumb {
+                background: var(--accent);
+                border-radius: 10px;
+            }
+            #statsSearchInput {
+                transition: border-color 0.2s, box-shadow 0.2s;
+            }
+            #statsSearchInput:focus {
+                box-shadow: 0 0 0 3px rgba(41, 82, 163, 0.2);
+            }
+            [data-theme="dark"] #statsCustomerList {
+                background: #20273c !important;
+                border-color: #2c3d67 !important;
+            }
+            [data-theme="dark"] #statsCustomerList h3 {
+                color: #ffd700 !important;
+            }
+            [data-theme="dark"] #statsCustomerList .stats-list-body div {
+                color: #ffffff !important;
+            }
+            [data-theme="dark"] #statsCustomerList .stats-list-body div span {
+                color: #b0bec5 !important;
+            }
+            [data-theme="dark"] #statsSearchInput {
+                background: #25355d !important;
+                color: #ffffff !important;
+                border-color: #395080 !important;
+            }
+            [data-theme="dark"] #statsSearchInput::placeholder {
+                color: #90a4ae !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // ================================================================
+    // 10. INITIALIZE
+    // ================================================================
+    
+    setTimeout(makeStatsClickable, 1500);
+    
+    console.log('✅ Stats Cards with Search & Print Ready!');
+    console.log('📊 Click any stat card → see list with search & print');
+    
+})();
+</script>
+<!-- ========== ADD SOURCE 7 TO ALL DROPDOWNS ========== -->
+<script>
+// ================================================================
+// ADD SOURCE '7' TO ALL SOURCE DROPDOWNS
+// ================================================================
+
+(function() {
+    'use strict';
+    
+    console.log('🔄 Adding Source "7" to all dropdowns...');
+    
+    // ================================================================
+    // 1. ADD TO ADD CUSTOMER FORM
+    // ================================================================
+    
+    function addSourceToAddForm() {
+        const select = document.getElementById('sourceSelect');
+        if (!select) return;
+        
+        // Check if already exists
+        const options = select.querySelectorAll('option');
+        let exists = false;
+        options.forEach(opt => {
+            if (opt.value === '7') exists = true;
+        });
+        
+        if (!exists) {
+            const option = document.createElement('option');
+            option.value = '7';
+            option.textContent = '7';
+            
+            // Insert before "Other" or at the end
+            const otherOption = select.querySelector('option[value="Other"]');
+            if (otherOption) {
+                select.insertBefore(option, otherOption);
+            } else {
+                select.appendChild(option);
+            }
+            console.log('✅ Source "7" added to Add Customer form');
+        }
+    }
+    
+    // ================================================================
+    // 2. ADD TO EDIT CUSTOMER FORM
+    // ================================================================
+    
+    function addSourceToEditForm() {
+        const select = document.getElementById('editSourceSelect');
+        if (!select) return;
+        
+        const options = select.querySelectorAll('option');
+        let exists = false;
+        options.forEach(opt => {
+            if (opt.value === '7') exists = true;
+        });
+        
+        if (!exists) {
+            const option = document.createElement('option');
+            option.value = '7';
+            option.textContent = '7';
+            
+            const otherOption = select.querySelector('option[value="Other"]');
+            if (otherOption) {
+                select.insertBefore(option, otherOption);
+            } else {
+                select.appendChild(option);
+            }
+            console.log('✅ Source "7" added to Edit form');
+        }
+    }
+    
+    // ================================================================
+    // 3. ADD TO FILTER DROPDOWN
+    // ================================================================
+    
+    function addSourceToFilter() {
+        const select = document.getElementById('sourceFilterSelect');
+        if (!select) return;
+        
+        const options = select.querySelectorAll('option');
+        let exists = false;
+        options.forEach(opt => {
+            if (opt.value === '7') exists = true;
+        });
+        
+        if (!exists) {
+            const option = document.createElement('option');
+            option.value = '7';
+            option.textContent = '7';
+            
+            // Insert before "Other" or at the end
+            const otherOption = select.querySelector('option[value="Other"]');
+            if (otherOption) {
+                select.insertBefore(option, otherOption);
+            } else {
+                select.appendChild(option);
+            }
+            console.log('✅ Source "7" added to Filter dropdown');
+        }
+    }
+    
+    // ================================================================
+    // 4. RUN ALL
+    // ================================================================
+    
+    function addSource7() {
+        addSourceToAddForm();
+        addSourceToEditForm();
+        addSourceToFilter();
+        console.log('✅ Source "7" added to all dropdowns!');
+    }
+    
+    // Run on load
+    setTimeout(addSource7, 500);
+    
+    // Also run when forms are opened (in case they load dynamically)
+    const observer = new MutationObserver(function() {
+        setTimeout(addSource7, 200);
+    });
+    
+    // Watch for form changes
+    const formContainer = document.getElementById('customerFormContainer');
+    if (formContainer) {
+        observer.observe(formContainer, { attributes: true, attributeFilter: ['class'] });
+    }
+    
+    // Watch for edit form
+    const editModal = document.getElementById('editModal');
+    if (editModal) {
+        observer.observe(editModal, { attributes: true, attributeFilter: ['style'] });
+    }
+    
+    console.log('✅ Source "7" system ready!');
+    
+})();
+</script>
    </body>
 
 </html>
