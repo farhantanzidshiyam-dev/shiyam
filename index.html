@@ -13710,6 +13710,251 @@ console.log('📤 Then syncs any changes BACK to Google Sheets');
     
 })();
 </script>
+  <script>
+// ================================================================
+// SIMPLE WORKING FIXES
+// ================================================================
+
+(function() {
+    'use strict';
+    
+    console.log('🔄 Applying Simple Fixes...');
+    
+    // ================================================================
+    // 1. FIX ADD CUSTOMER - Clear form & focus name
+    // ================================================================
+    
+    // Store original addNewCustomer
+    const origAddCustomer = window.addNewCustomer;
+    
+    window.addNewCustomer = function(name, phone, address, due, paid, source, note) {
+        if (!name) return false;
+        
+        const newCustomer = {
+            id: Date.now().toString().slice(-10),
+            dateAdded: new Date().toLocaleDateString('en-GB'),
+            name: capitalizeWords(name),
+            phone: phone.trim(),
+            address: address.trim(),
+            due: Math.round(Number(due)) || 0,
+            paid: Math.round(Number(paid)) || 0,
+            source: source.trim(),
+            note: note.trim(),
+            transactionHistory: []
+        };
+        
+        customers.push(newCustomer);
+        saveCustomers(customers);
+        renderTable();
+        
+        // ========== CLEAR FORM ==========
+        document.getElementById("nameInput").value = "";
+        document.getElementById("phoneInput").value = "";
+        document.getElementById("dueInput").value = "";
+        document.getElementById("paidInput").value = "";
+        document.getElementById("noteInput").value = "";
+        document.getElementById("addressSelect").value = "";
+        document.getElementById("sourceSelect").value = "";
+        document.getElementById("addressCustomInput").value = "";
+        document.getElementById("sourceCustomInput").value = "";
+        document.getElementById("addressCustomGroup").style.display = "none";
+        document.getElementById("sourceCustomGroup").style.display = "none";
+        
+        // ========== FOCUS NAME ==========
+        setTimeout(() => {
+            document.getElementById("nameInput").focus();
+        }, 100);
+        
+        // ========== HIGHLIGHT NEW ROW ==========
+        setTimeout(() => {
+            const rows = document.querySelectorAll('#customerTableBody tr');
+            rows.forEach(row => {
+                const nameCell = row.querySelector('.name-col');
+                if (nameCell && nameCell.textContent.trim() === capitalizeWords(name)) {
+                    row.style.background = '#28a745';
+                    row.style.color = 'white';
+                    row.style.transition = 'all 0.5s ease';
+                    setTimeout(() => {
+                        row.style.background = '';
+                        row.style.color = '';
+                    }, 1500);
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+        }, 200);
+        
+        // ========== SAVE BUTTON ANIMATION ==========
+        const saveBtn = document.querySelector('.customer-form-btn.save');
+        if (saveBtn) {
+            saveBtn.style.background = '#28a745';
+            saveBtn.style.transform = 'scale(1.05)';
+            saveBtn.innerHTML = '<i class="fas fa-check"></i> Added!';
+            setTimeout(() => {
+                saveBtn.style.background = '';
+                saveBtn.style.transform = '';
+                saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Customer';
+            }, 1000);
+        }
+        
+        showToast(`✅ ${newCustomer.name} added!`, 'success');
+        return true;
+    };
+    
+    // ================================================================
+    // 2. FIX CANCEL BUTTONS
+    // ================================================================
+    
+    function closeForm() {
+        document.getElementById("customerFormContainer").classList.remove("show");
+        document.getElementById("customerFormContainer").style.display = "none";
+        document.getElementById("addCustomerBtn").classList.remove("active");
+        document.getElementById("addCustomerForm").reset();
+        document.getElementById("addressCustomGroup").style.display = "none";
+        document.getElementById("sourceCustomGroup").style.display = "none";
+        saveFormState(false);
+    }
+    
+    // Fix cancel buttons - direct onclick
+    document.getElementById("cancelAddCustomerBtn").onclick = closeForm;
+    document.getElementById("cancelAddCustomerBtn2").onclick = closeForm;
+    
+    // Fix add button toggle
+    document.getElementById("addCustomerBtn").onclick = function() {
+        const form = document.getElementById("customerFormContainer");
+        if (form.classList.contains("show")) {
+            closeForm();
+        } else {
+            form.classList.add("show");
+            form.style.display = "block";
+            this.classList.add("active");
+            saveFormState(true);
+            setTimeout(() => document.getElementById("nameInput").focus(), 100);
+        }
+    };
+    
+    // ================================================================
+    // 3. FIX DELETE - USE EXISTING MODAL
+    // ================================================================
+    
+    // Fix delete function
+    window.deleteCustomer = function(id, password) {
+        if (password !== "3508") {
+            return false;
+        }
+        const index = customers.findIndex(c => c.id === id);
+        if (index === -1) return false;
+        customers.splice(index, 1);
+        saveCustomers(customers);
+        renderTable();
+        return true;
+    };
+    
+    // Fix showDeleteModal
+    window.showDeleteModal = function(id) {
+        const customer = customers.find(c => c.id === id);
+        if (!customer) {
+            showToast("Customer not found.", "error");
+            return;
+        }
+        document.getElementById("deleteCustomerName").textContent = customer.name;
+        document.getElementById("confirmDeleteBtn").dataset.customerId = id;
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+        document.getElementById("deleteModal").style.display = "flex";
+        setTimeout(() => document.getElementById("deletePasswordInput").focus(), 100);
+    };
+    
+    // Fix confirm delete
+    document.getElementById("confirmDeleteBtn").onclick = function() {
+        const id = this.dataset.customerId;
+        const pass = document.getElementById("deletePasswordInput").value;
+        const name = document.getElementById("deleteCustomerName").textContent;
+        
+        if (deleteCustomer(id, pass)) {
+            document.getElementById("deleteModal").style.display = "none";
+            document.getElementById("deletePasswordInput").value = "";
+            document.getElementById("deletePasswordWarning").classList.remove("show");
+            document.getElementById("previewModal").style.display = "none";
+            showToast(`✅ ${name} deleted!`, "success");
+            renderTable();
+        } else {
+            document.getElementById("deletePasswordWarning").classList.add("show");
+            document.getElementById("deletePasswordInput").value = "";
+            document.getElementById("deletePasswordInput").focus();
+            showToast("❌ Wrong password!", "error");
+        }
+    };
+    
+    // Fix delete cancel
+    document.getElementById("cancelDeleteBtn").onclick = function() {
+        document.getElementById("deleteModal").style.display = "none";
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+    };
+    
+    // Fix delete X
+    document.getElementById("closeDeleteModal").onclick = function() {
+        document.getElementById("deleteModal").style.display = "none";
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+    };
+    
+    // Fix delete Enter key
+    document.getElementById("deletePasswordInput").onkeydown = function(e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            document.getElementById("confirmDeleteBtn").click();
+        }
+    };
+    
+    // ================================================================
+    // 4. FIX OTHER MODAL CLOSES
+    // ================================================================
+    
+    document.getElementById("closePreviewModal").onclick = function() {
+        document.getElementById("previewModal").style.display = "none";
+    };
+    
+    document.getElementById("cancelEditBtn").onclick = function() {
+        document.getElementById("editModal").style.display = "none";
+    };
+    
+    document.getElementById("closeEditModal").onclick = function() {
+        document.getElementById("editModal").style.display = "none";
+    };
+    
+    document.getElementById("cancelPaymentBtn").onclick = function() {
+        document.getElementById("paymentModal").style.display = "none";
+    };
+    
+    document.getElementById("closePaymentModal").onclick = function() {
+        document.getElementById("paymentModal").style.display = "none";
+    };
+    
+    // ================================================================
+    // 5. CLICK OUTSIDE TO CLOSE MODALS
+    // ================================================================
+    
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.onclick = function(e) {
+            if (e.target === this) {
+                this.style.display = "none";
+                // Clear passwords
+                this.querySelectorAll('input[type="password"]').forEach(i => i.value = "");
+                this.querySelectorAll('.password-warning').forEach(w => w.classList.remove("show"));
+            }
+        };
+    });
+    
+    console.log('✅ All fixes applied!');
+    console.log('📌 Add: Form clears + cursor to Name');
+    console.log('📌 Add: Row highlights green');
+    console.log('📌 Add: Save button flashes green');
+    console.log('📌 Delete: Uses existing modal');
+    console.log('📌 Cancel: Both buttons work');
+    
+})();
+</script>
    </body>
 
 </html>
