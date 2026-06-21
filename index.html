@@ -13097,6 +13097,288 @@ console.log('📤 Then syncs any changes BACK to Google Sheets');
     
 })();
 </script>
+<!-- ========== ANDROID SYNC CONTROL ========== -->
+<script>
+// ================================================================
+// STOP AUTO-SYNC ON ANDROID - ONLY SYNC ON DATA CHANGE
+// ================================================================
+
+(function() {
+    'use strict';
+    
+    console.log('🔄 Android Sync Control Initializing...');
+    
+    // ================================================================
+    // 1. DETECT ANDROID
+    // ================================================================
+    
+    function isAndroid() {
+        return /android/i.test(navigator.userAgent);
+    }
+    
+    // ================================================================
+    // 2. OVERRIDE AUTO-LOAD FUNCTION - STOP AUTO-SYNC
+    // ================================================================
+    
+    // Save original functions
+    const originalLoadThenSync = window.loadThenSync;
+    const originalLoadFromGoogleSheets = window.loadFromGoogleSheets;
+    const originalSyncToGoogleSheets = window.syncToGoogleSheets;
+    
+    // ================================================================
+    // 3. OVERRIDE SYNC FUNCTIONS FOR ANDROID
+    // ================================================================
+    
+    if (isAndroid()) {
+        console.log('📱 Android detected - disabling auto-sync on load');
+        
+        // Override loadThenSync - ONLY LOAD, NO SYNC
+        window.loadThenSync = async function() {
+            console.log('📱 Android: Loading data only (no sync)');
+            try {
+                await loadFromGoogleSheetsOnly();
+            } catch(e) {
+                console.error('Android load error:', e);
+            }
+        };
+        
+        // Load function without sync
+        window.loadFromGoogleSheetsOnly = async function() {
+            try {
+                showToast('📱 Loading from Google Sheets...', 'info', 2000);
+                console.log('📱 Loading from Google Sheets (Android - no sync)');
+                
+                const url = `https://script.google.com/macros/s/AKfycbw3VQFQjdR1Fd-8KDAwp9DLTMQmqYviCY9_yzdsCaUx259fERBWeW9Rc1xE52lQaNfb/exec?action=getData&spreadsheetId=1eKFspNMGXT-C4GP3AHUCObflKtwxiy11FgBBEtTMvqk&_=${Date.now()}`;
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.status === 'success' && result.data && result.data.length > 1) {
+                    const imported = parseSheetDataOnly(result.data);
+                    
+                    if (imported.length > 0) {
+                        window.customers = imported;
+                        saveCustomers(imported);
+                        renderTable();
+                        
+                        const now = new Date().toISOString();
+                        localStorage.setItem('roza_last_data_load', now);
+                        
+                        showToast(`✅ Loaded ${imported.length} customers from Google Sheets`, 'success', 3000);
+                        console.log(`📱 Android: Loaded ${imported.length} customers (no sync)`);
+                        return true;
+                    }
+                }
+                
+                console.log('📱 Android: No data found in Google Sheets');
+                return false;
+                
+            } catch (error) {
+                console.error('📱 Android load error:', error);
+                if (window.customers.length === 0) {
+                    showToast('⚠️ No data found. Add customers manually.', 'warning', 3000);
+                }
+                return false;
+            }
+        };
+        
+        // Parse sheet data (copy of existing function)
+        function parseSheetDataOnly(sheetData) {
+            if (!sheetData || !Array.isArray(sheetData) || sheetData.length < 2) {
+                return [];
+            }
+
+            const headers = sheetData[0];
+            const rows = sheetData.slice(1);
+
+            const getIndex = (name) => {
+                return headers.findIndex(h => 
+                    h && h.toString().toLowerCase().trim() === name.toLowerCase().trim()
+                );
+            };
+
+            const nameIdx = getIndex('Name');
+            if (nameIdx === -1) return [];
+
+            const idIdx = getIndex('ID');
+            const dateIdx = getIndex('Date');
+            const phoneIdx = getIndex('Phone');
+            const addressIdx = getIndex('Address');
+            const dueIdx = getIndex('Due');
+            const paidIdx = getIndex('Paid');
+            const sourceIdx = getIndex('Source');
+            const notesIdx = getIndex('Notes');
+
+            const customers = [];
+
+            rows.forEach((row, index) => {
+                if (!row || row.length === 0) return;
+                const name = getCellValueOnly(row, nameIdx);
+                if (!name || name.trim() === '') return;
+
+                customers.push({
+                    id: getCellValueOnly(row, idIdx) || `CUST-${Date.now()}-${index}`,
+                    dateAdded: getCellValueOnly(row, dateIdx) || new Date().toLocaleDateString('en-GB'),
+                    name: capitalizeWords(name.trim()),
+                    phone: getCellValueOnly(row, phoneIdx) || '',
+                    address: capitalizeWords(getCellValueOnly(row, addressIdx) || ''),
+                    due: Math.round(Number(getCellValueOnly(row, dueIdx)) || 0),
+                    paid: Math.round(Number(getCellValueOnly(row, paidIdx)) || 0),
+                    source: getCellValueOnly(row, sourceIdx) || '',
+                    note: getCellValueOnly(row, notesIdx) || '',
+                    transactionHistory: []
+                });
+            });
+
+            return customers;
+        }
+
+        function getCellValueOnly(row, index) {
+            if (index === -1 || !row || index >= row.length) return '';
+            const value = row[index];
+            if (value === null || value === undefined) return '';
+            return String(value).trim();
+        }
+        
+        console.log('📱 Android auto-sync DISABLED on load');
+    }
+    
+    // ================================================================
+    // 4. ONLY SYNC ON DATA CHANGE (WORKS ON ALL DEVICES)
+    // ================================================================
+    
+    // Save original functions
+    const originalAddNewCustomer = window.addNewCustomer;
+    const originalUpdateCustomer = window.updateCustomer;
+    const originalRecordPayment = window.recordPayment;
+    const originalDeleteCustomer = window.deleteCustomer;
+    const originalClearCustomerNotes = window.clearCustomerNotes;
+    const originalClearCustomerAmounts = window.clearCustomerAmounts;
+    
+    // Override addNewCustomer - sync after adding
+    window.addNewCustomer = function(...args) {
+        const result = originalAddNewCustomer(...args);
+        if (result && window.customers.length > 0) {
+            // Sync after adding
+            setTimeout(() => {
+                if (typeof syncToGoogleSheets === 'function') {
+                    syncToGoogleSheets();
+                }
+            }, 2000);
+        }
+        return result;
+    };
+    
+    // Override updateCustomer - sync after updating
+    window.updateCustomer = function(...args) {
+        const result = originalUpdateCustomer(...args);
+        if (result && window.customers.length > 0) {
+            setTimeout(() => {
+                if (typeof syncToGoogleSheets === 'function') {
+                    syncToGoogleSheets();
+                }
+            }, 2000);
+        }
+        return result;
+    };
+    
+    // Override recordPayment - sync after payment
+    window.recordPayment = function(...args) {
+        const result = originalRecordPayment(...args);
+        if (result && window.customers.length > 0) {
+            setTimeout(() => {
+                if (typeof syncToGoogleSheets === 'function') {
+                    syncToGoogleSheets();
+                }
+            }, 2000);
+        }
+        return result;
+    };
+    
+    // Override deleteCustomer - sync after delete
+    window.deleteCustomer = function(...args) {
+        const result = originalDeleteCustomer(...args);
+        if (result && window.customers.length > 0) {
+            setTimeout(() => {
+                if (typeof syncToGoogleSheets === 'function') {
+                    syncToGoogleSheets();
+                }
+            }, 2000);
+        }
+        return result;
+    };
+    
+    // Override clear functions
+    window.clearCustomerNotes = function(...args) {
+        const result = originalClearCustomerNotes(...args);
+        setTimeout(() => {
+            if (typeof syncToGoogleSheets === 'function' && window.customers.length > 0) {
+                syncToGoogleSheets();
+            }
+        }, 2000);
+        return result;
+    };
+    
+    window.clearCustomerAmounts = function(...args) {
+        const result = originalClearCustomerAmounts(...args);
+        setTimeout(() => {
+            if (typeof syncToGoogleSheets === 'function' && window.customers.length > 0) {
+                syncToGoogleSheets();
+            }
+        }, 2000);
+        return result;
+    };
+    
+    // Also override saveCustomers to trigger sync on data changes
+    const originalSaveCustomers = window.saveCustomers;
+    window.saveCustomers = function(arr) {
+        const result = originalSaveCustomers(arr);
+        // Check if data actually changed
+        if (arr && arr.length > 0) {
+            // Only sync if not on Android (or if Android and data changed)
+            // On Android, sync only when user explicitly adds/edits
+            // The individual functions above handle sync
+        }
+        return result;
+    };
+    
+    // ================================================================
+    // 5. OVERRIDE SYNC FUNCTION TO SHOW MESSAGE ON ANDROID
+    // ================================================================
+    
+    if (isAndroid()) {
+        // Show toast when sync happens on Android
+        const originalSync = window.syncToGoogleSheets;
+        if (originalSync) {
+            window.syncToGoogleSheets = function() {
+                showToast('📤 Syncing data to Google Sheets...', 'info', 2000);
+                return originalSync.apply(this, arguments);
+            };
+        }
+    }
+    
+    // ================================================================
+    // 6. INITIALIZE
+    // ================================================================
+    
+    console.log('✅ Sync Control Ready!');
+    
+    if (isAndroid()) {
+        console.log('📱 Android: Auto-sync on load DISABLED');
+        console.log('📱 Android: Sync only on data changes (add/edit/payment)');
+    } else {
+        console.log('💻 Desktop: Normal sync behavior');
+    }
+    
+})();
+</script>
    </body>
 
 </html>
