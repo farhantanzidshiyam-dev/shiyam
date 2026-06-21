@@ -13379,6 +13379,74 @@ console.log('📤 Then syncs any changes BACK to Google Sheets');
     
 })();
 </script>
+  // ================================================================
+// DELETE MODAL - COMPLETE FIX
+// ================================================================
+
+// Confirm Delete Button
+document.getElementById("confirmDeleteBtn").addEventListener("click", function() {
+    const customerId = this.dataset.customerId;
+    const password = document.getElementById("deletePasswordInput").value;
+    const customerName = document.getElementById("deleteCustomerName").textContent;
+    
+    if (deleteCustomer(customerId, password)) {
+        // Close delete modal
+        const modal = document.getElementById("deleteModal");
+        if (modal) {
+            modal.style.display = "none";
+            document.getElementById("deletePasswordInput").value = "";
+            document.getElementById("deletePasswordWarning").classList.remove("show");
+        }
+        // Close preview modal if open
+        const previewModal = document.getElementById("previewModal");
+        if (previewModal) {
+            previewModal.style.display = "none";
+        }
+        showToast(`Customer ${customerName} deleted successfully!`, "warning");
+    } else {
+        document.getElementById("deletePasswordWarning").classList.add("show");
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordInput").focus();
+        showToast("Incorrect password or deletion failed!", "error");
+    }
+});
+
+// Enter key on password field
+document.getElementById("deletePasswordInput").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        document.getElementById("confirmDeleteBtn").click();
+    }
+});
+
+// Cancel button
+document.getElementById("cancelDeleteBtn").addEventListener("click", function() {
+    const modal = document.getElementById("deleteModal");
+    if (modal) {
+        modal.style.display = "none";
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+    }
+});
+
+// X Close button
+document.getElementById("closeDeleteModal").addEventListener("click", function() {
+    const modal = document.getElementById("deleteModal");
+    if (modal) {
+        modal.style.display = "none";
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+    }
+});
+
+// Close on outside click
+document.getElementById("deleteModal").addEventListener("click", function(e) {
+    if (e.target === this) {
+        this.style.display = "none";
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+    }
+});
    </body>
 
 </html>
