@@ -13379,122 +13379,306 @@ console.log('📤 Then syncs any changes BACK to Google Sheets');
     
 })();
 </script>
-  <!-- ========== DELETE MODAL - COMPLETE FIX ========== -->
+  <!-- ========== CUSTOMER MANAGEMENT FIXES ========== -->
 <script>
 // ================================================================
-// FIX: DELETE MODAL CLOSING
+// 1. DELETE PASSWORD - INLINE (NO EXTRA MODAL)
+// 2. ADD CUSTOMER ANIMATION
+// 3. MODAL CLOSE FIX
 // ================================================================
 
-// Fix deleteCustomer function
-function deleteCustomer(id, password) {
-    if (password !== ADMIN_PASSWORDS.deleteCustomer) {
-        console.log('❌ Delete: Incorrect password');
-        return false;
-    }
+(function() {
+    'use strict';
     
-    const customerIndex = customers.findIndex(c => c.id === id);
-    if (customerIndex === -1) {
-        console.log('❌ Delete: Customer not found');
-        return false;
-    }
+    console.log('🔄 Applying Customer Management Fixes...');
     
-    const customer = customers[customerIndex];
+    // ================================================================
+    // 1. FIX DELETE MODAL - USE EXISTING MODAL (NO EXTRA POPUP)
+    // ================================================================
     
-    if (customer.transactionHistory && customer.transactionHistory.length > 0) {
-        const historyNote = "=== PAYMENT HISTORY (DELETED) ===\n" + 
-            customer.transactionHistory.map(t => 
-                `[${t.date}] ${t.type}: ${formatMoneyDisplay(t.amount)} - ${t.note}`
-            ).join('\n');
-        customer.note = historyNote + (customer.note ? '\n\n' + customer.note : '');
+    // Ensure delete modal uses the existing modal structure
+    // The delete modal is already in the HTML - we just need to make it work properly
+    
+    // Fix: Show delete modal with customer name
+    window.showDeleteModal = function(id) {
+        const customer = customers.find(c => c.id === id);
+        if (!customer) {
+            showToast("Customer not found for deletion.", "error");
+            return;
+        }
+
+        document.getElementById("deleteCustomerName").textContent = capitalizeWords(customer.name);
+        document.getElementById("confirmDeleteBtn").dataset.customerId = id;
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+
+        document.getElementById("deleteModal").style.display = "flex";
+        setTimeout(() => document.getElementById("deletePasswordInput").focus(), 100);
+    };
+    
+    // Fix: Confirm delete button
+    document.getElementById("confirmDeleteBtn").addEventListener("click", function() {
+        const customerId = this.dataset.customerId;
+        const password = document.getElementById("deletePasswordInput").value;
+        const customerName = document.getElementById("deleteCustomerName").textContent;
+        
+        if (deleteCustomer(customerId, password)) {
+            // Close delete modal
+            document.getElementById("deleteModal").style.display = "none";
+            document.getElementById("deletePasswordInput").value = "";
+            document.getElementById("deletePasswordWarning").classList.remove("show");
+            
+            // Close preview modal if open
+            const previewModal = document.getElementById("previewModal");
+            if (previewModal) {
+                previewModal.style.display = "none";
+            }
+            
+            showToast(`✅ ${customerName} deleted successfully!`, "success");
+            renderTable();
+        } else {
+            document.getElementById("deletePasswordWarning").classList.add("show");
+            document.getElementById("deletePasswordInput").value = "";
+            document.getElementById("deletePasswordInput").focus();
+            showToast("❌ Incorrect password!", "error");
+        }
+    });
+    
+    // Fix: Enter key on password field
+    document.getElementById("deletePasswordInput").addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            document.getElementById("confirmDeleteBtn").click();
+        }
+    });
+    
+    // Fix: Cancel button
+    document.getElementById("cancelDeleteBtn").addEventListener("click", function() {
+        document.getElementById("deleteModal").style.display = "none";
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+    });
+    
+    // Fix: X close button
+    document.getElementById("closeDeleteModal").addEventListener("click", function() {
+        document.getElementById("deleteModal").style.display = "none";
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+    });
+    
+    // Fix: Outside click
+    document.getElementById("deleteModal").addEventListener("click", function(e) {
+        if (e.target === this) {
+            this.style.display = "none";
+            document.getElementById("deletePasswordInput").value = "";
+            document.getElementById("deletePasswordWarning").classList.remove("show");
+        }
+    });
+    
+    // ================================================================
+    // 2. ADD CUSTOMER ANIMATION & IMMEDIATE LIST UPDATE
+    // ================================================================
+    
+    // Fix: Override addNewCustomer with animation
+    const originalAddNewCustomer = window.addNewCustomer;
+    
+    window.addNewCustomer = function(name, phone, address, due, paid, source, note) {
+        if (!name) return false;
+        
+        const newCustomer = {
+            id: generateId(),
+            dateAdded: new Date().toLocaleDateString('en-GB'),
+            name: capitalizeWords(name),
+            phone: phone.trim(),
+            address: address.trim(),
+            due: Math.round(Number(due)) || 0,
+            paid: Math.round(Number(paid)) || 0,
+            source: source.trim(),
+            note: note.trim(),
+            transactionHistory: []
+        };
+        
+        // Add to customers array
+        customers.push(newCustomer);
         saveCustomers(customers);
-    }
-    
-    const initialLength = customers.length;
-    customers = customers.filter(c => c.id !== id);
-    
-    if (customers.length < initialLength) {
-        saveCustomers(customers);
+        
+        // ========== ANIMATION: Flash the new row ==========
+        // Render table immediately
         renderTable();
-        console.log('✅ Delete: Customer deleted successfully');
+        
+        // Find the new row and highlight it
+        setTimeout(function() {
+            const rows = document.querySelectorAll('#customerTableBody tr');
+            rows.forEach(row => {
+                const nameCell = row.querySelector('.name-col');
+                if (nameCell && nameCell.textContent.trim() === capitalizeWords(name)) {
+                    // Add highlight animation
+                    row.style.transition = 'background 0.3s ease';
+                    row.style.background = 'rgba(40, 167, 69, 0.3)';
+                    row.style.borderLeft = '4px solid #28a745';
+                    
+                    // Flash effect
+                    setTimeout(() => {
+                        row.style.background = 'rgba(40, 167, 69, 0.1)';
+                    }, 300);
+                    setTimeout(() => {
+                        row.style.background = '';
+                        row.style.borderLeft = '';
+                    }, 800);
+                    
+                    // Scroll to the row
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    
+                    // Show success toast
+                    showToast(`✅ ${newCustomer.name} added at SL ${customers.length}`, 'success');
+                }
+            });
+        }, 100);
+        
         return true;
-    }
+    };
     
-    return false;
-}
-
-// Confirm Delete Button
-document.getElementById("confirmDeleteBtn").addEventListener("click", function() {
-    console.log('🔴 Delete button clicked');
+    // ================================================================
+    // 3. FIX ADD CUSTOMER FORM - CANCEL/CLOSE BUTTONS
+    // ================================================================
     
-    const customerId = this.dataset.customerId;
-    const password = document.getElementById("deletePasswordInput").value;
-    const customerName = document.getElementById("deleteCustomerName").textContent;
-    
-    const result = deleteCustomer(customerId, password);
-    
-    if (result === true) {
-        // CLOSE DELETE MODAL
-        const deleteModal = document.getElementById("deleteModal");
-        if (deleteModal) {
-            deleteModal.style.display = "none";
-        }
-        document.getElementById("deletePasswordInput").value = "";
-        document.getElementById("deletePasswordWarning").classList.remove("show");
+    // Fix: Cancel buttons
+    function closeAddCustomerForm() {
+        const formContainer = document.getElementById("customerFormContainer");
+        const addBtn = document.getElementById("addCustomerBtn");
         
-        // CLOSE PREVIEW MODAL
-        const previewModal = document.getElementById("previewModal");
-        if (previewModal) {
-            previewModal.style.display = "none";
+        if (formContainer) {
+            formContainer.classList.remove("show");
+            formContainer.style.display = "none";
+        }
+        if (addBtn) {
+            addBtn.classList.remove("active");
         }
         
-        showToast(`✅ Customer ${customerName} deleted successfully!`, "success");
-        renderTable();
-    } else {
-        document.getElementById("deletePasswordWarning").classList.add("show");
-        document.getElementById("deletePasswordInput").value = "";
-        document.getElementById("deletePasswordInput").focus();
-        showToast("❌ Incorrect password!", "error");
+        // Reset form
+        const form = document.getElementById("addCustomerForm");
+        if (form) {
+            form.reset();
+        }
+        
+        // Hide custom fields
+        const addressCustomGroup = document.getElementById("addressCustomGroup");
+        if (addressCustomGroup) {
+            addressCustomGroup.style.display = "none";
+        }
+        const sourceCustomGroup = document.getElementById("sourceCustomGroup");
+        if (sourceCustomGroup) {
+            sourceCustomGroup.style.display = "none";
+        }
+        
+        saveFormState(false);
     }
-});
-
-// Enter key
-document.getElementById("deletePasswordInput").addEventListener("keydown", function(e) {
-    if (e.key === "Enter") {
-        e.preventDefault();
-        document.getElementById("confirmDeleteBtn").click();
+    
+    // Cancel button 1
+    document.getElementById("cancelAddCustomerBtn").addEventListener("click", closeAddCustomerForm);
+    
+    // Cancel button 2
+    document.getElementById("cancelAddCustomerBtn2").addEventListener("click", closeAddCustomerForm);
+    
+    // Fix: Add Customer button toggle
+    document.getElementById("addCustomerBtn").addEventListener("click", function() {
+        const formContainer = document.getElementById("customerFormContainer");
+        if (formContainer.classList.contains("show")) {
+            closeAddCustomerForm();
+        } else {
+            formContainer.classList.add("show");
+            formContainer.style.display = "block";
+            this.classList.add("active");
+            saveFormState(true);
+            setTimeout(() => {
+                document.getElementById("nameInput").focus();
+            }, 100);
+        }
+    });
+    
+    // ================================================================
+    // 4. FIX EDIT MODAL - CLOSE BUTTONS
+    // ================================================================
+    
+    function closeEditModal() {
+        document.getElementById("editModal").style.display = "none";
+        document.getElementById("editIdInput").value = "";
+        document.getElementById("editNameInput").value = "";
+        document.getElementById("editPhoneInput").value = "";
+        document.getElementById("editDueInput").value = "";
+        document.getElementById("editPaidInput").value = "";
+        document.getElementById("editNoteInput").value = "";
+        document.getElementById("editAddressCustomGroup").style.display = "none";
+        document.getElementById("editSourceCustomGroup").style.display = "none";
     }
-});
-
-// Cancel button
-document.getElementById("cancelDeleteBtn").addEventListener("click", function() {
-    const modal = document.getElementById("deleteModal");
-    if (modal) {
-        modal.style.display = "none";
-        document.getElementById("deletePasswordInput").value = "";
-        document.getElementById("deletePasswordWarning").classList.remove("show");
+    
+    document.getElementById("cancelEditBtn").addEventListener("click", closeEditModal);
+    document.getElementById("closeEditModal").addEventListener("click", closeEditModal);
+    
+    // ================================================================
+    // 5. FIX PAYMENT MODAL - CLOSE BUTTONS
+    // ================================================================
+    
+    function closePaymentModal() {
+        document.getElementById("paymentModal").style.display = "none";
+        document.getElementById("paymentAmountInput").value = "";
+        document.getElementById("paymentNoteInput").value = "";
+        document.getElementById("paymentType").value = "received";
+        document.querySelectorAll('.payment-type-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('.payment-type-btn.received').classList.add('active');
+        document.getElementById('adjustmentOptions').classList.remove('show');
     }
-});
-
-// X Close button
-document.getElementById("closeDeleteModal").addEventListener("click", function() {
-    const modal = document.getElementById("deleteModal");
-    if (modal) {
-        modal.style.display = "none";
-        document.getElementById("deletePasswordInput").value = "";
-        document.getElementById("deletePasswordWarning").classList.remove("show");
+    
+    document.getElementById("cancelPaymentBtn").addEventListener("click", closePaymentModal);
+    document.getElementById("closePaymentModal").addEventListener("click", closePaymentModal);
+    
+    // ================================================================
+    // 6. FIX PREVIEW MODAL - CLOSE
+    // ================================================================
+    
+    document.getElementById("closePreviewModal").addEventListener("click", function() {
+        document.getElementById("previewModal").style.display = "none";
+    });
+    
+    // ================================================================
+    // 7. ADD CSS ANIMATION
+    // ================================================================
+    
+    if (!document.getElementById('customerAnimStyle')) {
+        const style = document.createElement('style');
+        style.id = 'customerAnimStyle';
+        style.textContent = `
+            /* Add customer highlight animation */
+            @keyframes highlightRow {
+                0% { background: rgba(40, 167, 69, 0.4); border-left: 4px solid #28a745; }
+                50% { background: rgba(40, 167, 69, 0.15); border-left: 4px solid #28a745; }
+                100% { background: transparent; border-left: none; }
+            }
+            
+            .customer-row-highlight {
+                animation: highlightRow 1.2s ease forwards;
+            }
+            
+            /* Modal close fix */
+            .modal-content .close-btn {
+                cursor: pointer;
+                font-size: 1.8rem;
+                font-weight: bold;
+                transition: color 0.2s;
+            }
+            .modal-content .close-btn:hover {
+                color: var(--action-delete);
+            }
+        `;
+        document.head.appendChild(style);
     }
-});
-
-// Outside click
-document.getElementById("deleteModal").addEventListener("click", function(e) {
-    if (e.target === this) {
-        this.style.display = "none";
-        document.getElementById("deletePasswordInput").value = "";
-        document.getElementById("deletePasswordWarning").classList.remove("show");
-    }
-});
-
-console.log('✅ Delete Modal Fix Applied!');
+    
+    console.log('✅ All fixes applied!');
+    console.log('📌 Delete: Uses existing modal (no extra popup)');
+    console.log('📌 Add: Animation + immediate list update');
+    console.log('📌 Modals: Cancel/Close buttons fixed');
+    
+})();
 </script>
    </body>
 
