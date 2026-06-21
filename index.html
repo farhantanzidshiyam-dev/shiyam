@@ -13379,40 +13379,85 @@ console.log('📤 Then syncs any changes BACK to Google Sheets');
     
 })();
 </script>
-  <script>
-  // ================================================================
-// DELETE MODAL - COMPLETE FIX
+  <!-- ========== DELETE MODAL - COMPLETE FIX ========== -->
+<script>
 // ================================================================
+// FIX: DELETE MODAL CLOSING
+// ================================================================
+
+// Fix deleteCustomer function
+function deleteCustomer(id, password) {
+    if (password !== ADMIN_PASSWORDS.deleteCustomer) {
+        console.log('❌ Delete: Incorrect password');
+        return false;
+    }
+    
+    const customerIndex = customers.findIndex(c => c.id === id);
+    if (customerIndex === -1) {
+        console.log('❌ Delete: Customer not found');
+        return false;
+    }
+    
+    const customer = customers[customerIndex];
+    
+    if (customer.transactionHistory && customer.transactionHistory.length > 0) {
+        const historyNote = "=== PAYMENT HISTORY (DELETED) ===\n" + 
+            customer.transactionHistory.map(t => 
+                `[${t.date}] ${t.type}: ${formatMoneyDisplay(t.amount)} - ${t.note}`
+            ).join('\n');
+        customer.note = historyNote + (customer.note ? '\n\n' + customer.note : '');
+        saveCustomers(customers);
+    }
+    
+    const initialLength = customers.length;
+    customers = customers.filter(c => c.id !== id);
+    
+    if (customers.length < initialLength) {
+        saveCustomers(customers);
+        renderTable();
+        console.log('✅ Delete: Customer deleted successfully');
+        return true;
+    }
+    
+    return false;
+}
 
 // Confirm Delete Button
 document.getElementById("confirmDeleteBtn").addEventListener("click", function() {
+    console.log('🔴 Delete button clicked');
+    
     const customerId = this.dataset.customerId;
     const password = document.getElementById("deletePasswordInput").value;
     const customerName = document.getElementById("deleteCustomerName").textContent;
     
-    if (deleteCustomer(customerId, password)) {
-        // Close delete modal
-        const modal = document.getElementById("deleteModal");
-        if (modal) {
-            modal.style.display = "none";
-            document.getElementById("deletePasswordInput").value = "";
-            document.getElementById("deletePasswordWarning").classList.remove("show");
+    const result = deleteCustomer(customerId, password);
+    
+    if (result === true) {
+        // CLOSE DELETE MODAL
+        const deleteModal = document.getElementById("deleteModal");
+        if (deleteModal) {
+            deleteModal.style.display = "none";
         }
-        // Close preview modal if open
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deletePasswordWarning").classList.remove("show");
+        
+        // CLOSE PREVIEW MODAL
         const previewModal = document.getElementById("previewModal");
         if (previewModal) {
             previewModal.style.display = "none";
         }
-        showToast(`Customer ${customerName} deleted successfully!`, "warning");
+        
+        showToast(`✅ Customer ${customerName} deleted successfully!`, "success");
+        renderTable();
     } else {
         document.getElementById("deletePasswordWarning").classList.add("show");
         document.getElementById("deletePasswordInput").value = "";
         document.getElementById("deletePasswordInput").focus();
-        showToast("Incorrect password or deletion failed!", "error");
+        showToast("❌ Incorrect password!", "error");
     }
 });
 
-// Enter key on password field
+// Enter key
 document.getElementById("deletePasswordInput").addEventListener("keydown", function(e) {
     if (e.key === "Enter") {
         e.preventDefault();
@@ -13440,7 +13485,7 @@ document.getElementById("closeDeleteModal").addEventListener("click", function()
     }
 });
 
-// Close on outside click
+// Outside click
 document.getElementById("deleteModal").addEventListener("click", function(e) {
     if (e.target === this) {
         this.style.display = "none";
@@ -13448,6 +13493,8 @@ document.getElementById("deleteModal").addEventListener("click", function(e) {
         document.getElementById("deletePasswordWarning").classList.remove("show");
     }
 });
+
+console.log('✅ Delete Modal Fix Applied!');
 </script>
    </body>
 
